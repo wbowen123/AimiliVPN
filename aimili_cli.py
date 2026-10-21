@@ -87,7 +87,7 @@ def get_domain():
 
 
 def get_subscription_data():
-    """读取已生成的节点与订阅配置"""
+    """读取已生成的全协议节点与全生态订阅配置"""
     data = {}
     if os.path.exists(NODES_JSON):
         try:
@@ -100,146 +100,91 @@ def get_subscription_data():
     public_ip = data.get("public_ip") or get_public_ip()
     sub_host = domain if domain else public_ip
 
-    direct_url = data.get("direct_url", "")
-    resi_url = data.get("resi_url", "")
-
-    # 如果 json 里没有链接，尝试从 links.txt 提取
-    if (not direct_url or not resi_url) and os.path.exists(LINKS_FILE):
+    # 读取全部节点链接
+    all_links = []
+    nodes_txt_path = "/var/www/aimilivpn-sub/nodes.txt"
+    if not os.path.exists(nodes_txt_path):
+        nodes_txt_path = os.path.join(DATA_DIR, "singbox_links.txt")
+    if os.path.exists(nodes_txt_path):
         try:
-            with open(LINKS_FILE, "r", encoding="utf-8") as f:
-                lines = [l.strip() for l in f if l.strip().startswith("vless://")]
-                if len(lines) >= 2:
-                    direct_url = direct_url or lines[0]
-                    resi_url = resi_url or lines[1]
-                elif len(lines) == 1:
-                    direct_url = direct_url or lines[0]
+            with open(nodes_txt_path, "r", encoding="utf-8") as f:
+                all_links = [l.strip() for l in f if l.strip() and not l.startswith("#")]
         except Exception:
             pass
+
+    direct_links = [l for l in all_links if "直连" in l or "原生" in l]
+    resi_links = [l for l in all_links if "住宅" in l or "家宽" in l]
 
     return {
         "public_ip": public_ip,
         "domain": domain,
         "sub_host": sub_host,
-        "direct_url": direct_url,
-        "resi_url": resi_url,
+        "all_links": all_links,
+        "direct_links": direct_links,
+        "resi_links": resi_links,
         "sub_url_18443": f"https://{sub_host}:18443/sub.txt",
-        "sub_url_8443": f"https://{sub_host}:8443/sub/sub.txt",
+        "clash_url_18443": f"https://{sub_host}:18443/clash.yaml",
+        "singbox_url_18443": f"https://{sub_host}:18443/singbox.json",
         "nodes_txt_url": f"https://{sub_host}:18443/nodes.txt",
+        "sub_url_8443": f"https://{sub_host}:8443/sub/sub.txt",
         "short_id": data.get("short_id", ""),
         "public_key": data.get("public_key", ""),
         "camouflage_domain": data.get("camouflage_domain", "gateway.icloud.com")
     }
 
 
-def get_web_auth_data():
-    """读取网页控制面板的账号、密码与安全路径"""
-    info = {
-        "secret_path": "",
-        "username": "未配置",
-        "password": "未配置",
-        "port": 8443,
-        "internal_port": 8501,
-        "web_url": "",
-        "web_url_ip": "",
-        "domain": "",
-        "public_ip": ""
-    }
-    domain = get_domain()
-    public_ip = get_public_ip()
-    host = domain if domain else public_ip
-    info["domain"] = domain
-    info["public_ip"] = public_ip
-
-    if os.path.exists(AUTH_FILE):
-        try:
-            with open(AUTH_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                info["secret_path"] = data.get("secret_path", "").strip("/")
-                info["username"] = data.get("username", "未配置")
-                info["password"] = data.get("password", "未配置")
-                info["internal_port"] = data.get("port", 8501)
-        except Exception:
-            pass
-
-    path = f"/{info['secret_path']}/" if info["secret_path"] else "/"
-    info["web_url"] = f"https://{host}:8443{path}"
-    info["web_url_ip"] = f"https://{public_ip}:8443{path}"
-    return info
-
-
-def print_web_dashboard():
-    """打印网页控制面板访问信息"""
-    auth = get_web_auth_data()
-    print(f"\n{C_GREEN}======================================================================{C_RESET}")
-    print(f"{C_BOLD}{C_GREEN}              🖥️  AimiliVPN 网页控制面板 (Web Dashboard){C_RESET}")
-    print(f"{C_GREEN}======================================================================{C_RESET}")
-    print(f"  * {C_BOLD}HTTPS 控制面板地址:{C_RESET} {C_BLUE}{C_BOLD}{auth['web_url']}{C_RESET}")
-    if auth["domain"]:
-        print(f"  * 备用（IP 直连地址）: {C_BLUE}{auth['web_url_ip']}{C_RESET}")
-    print(f"  * {C_BOLD}网页管理账号:{C_RESET}       {C_YELLOW}{auth['username']}{C_RESET}")
-    print(f"  * {C_BOLD}网页管理密码:{C_RESET}       {C_YELLOW}{auth['password']}{C_RESET}")
-    if auth["secret_path"]:
-        print(f"  * {C_BOLD}安全访问后缀:{C_RESET}       {C_GREEN}/{auth['secret_path']}/{C_RESET}")
-    print(f" ----------------------------------------------------------------------")
-    print(f"  {C_BOLD}💡 访问提示与核心功能：{C_RESET}")
-    if auth["secret_path"]:
-        print(f"  1. 必须在 URL 后面带上安全后缀 {C_GREEN}/{auth['secret_path']}/{C_RESET} 才能打开登录页面；")
-        print(f"     （如果直接访问根目录 https://...:8443/ 会被系统防探测机制返回 404）")
-    else:
-        print(f"  1. 直接访问 {C_BLUE}{auth['web_url']}{C_RESET} 即可进入登录页面；")
-    print(f"  2. 登录后进入可视化仪表盘：按国家（美国/日本/德国等）实时切换住宅出口；")
-    print(f"  3. 实时查看各国家可用节点延迟、带宽、在线状态，以及修改账号密码与安全后缀。")
-    print(f"{C_GREEN}======================================================================{C_RESET}\n")
-
-
 def print_subscription_card():
-    """格式化打印双节点与订阅详情"""
+    """格式化打印全协议 10 大节点与全生态订阅详情"""
     sub = get_subscription_data()
     auth = get_web_auth_data()
 
     print(f"\n{C_GREEN}======================================================================{C_RESET}")
-    print(f"{C_BOLD}{C_GREEN}              ⚡ AimiliVPN & Sing-box 双节点分流与订阅{C_RESET}")
+    print(f"{C_BOLD}{C_GREEN}          ⚡ AimiliVPN 全协议矩阵 × 原生/家宽双出站订阅{C_RESET}")
     print(f"{C_GREEN}======================================================================{C_RESET}")
 
-    if not sub["direct_url"] and not sub["resi_url"]:
+    if not sub["all_links"]:
         print(f"{C_RED}未检测到已生成的 Sing-box 节点配置！{C_RESET}")
-        print(f"请先运行以下命令一键部署 Sing-box 核心：")
+        print(f"请先运行以下命令一键部署全协议核心：")
         print(f"  {C_YELLOW}bash /opt/aimilivpn/scripts/setup_singbox.sh{C_RESET}\n")
         return
 
-    print(f"{C_BOLD}【1. HTTPS 客户端通用订阅地址】{C_RESET}")
-    print(f"  * 推荐订阅地址:   {C_BLUE}{C_BOLD}{sub['sub_url_18443']}{C_RESET}")
-    print(f"  * 备用订阅地址:   {C_BLUE}{sub['sub_url_8443']}{C_RESET}")
-    if sub["domain"]:
-        print(f"  * IP 备用订阅:    {C_BLUE}https://{sub['public_ip']}:18443/sub.txt{C_RESET}")
-    print(f"  * 明文节点列表:   {C_BLUE}{sub['nodes_txt_url']}{C_RESET}")
+    print(f"{C_BOLD}【1. 多客户端通用订阅地址】{C_RESET}")
+    print(f"  * {C_GREEN}Base64 通用订阅:{C_RESET}   {C_BLUE}{C_BOLD}{sub['sub_url_18443']}{C_RESET}")
+    print(f"    (支持 v2rayN、Shadowrocket 小火箭、Loon、Surge、Quantumult X)")
+    print(f"  * {C_GREEN}Clash Meta 订阅:{C_RESET}   {C_BLUE}{C_BOLD}{sub['clash_url_18443']}{C_RESET}")
+    print(f"    (内置自动优选与故障转移策略组，支持 Clash Verge Rev、Mihomo)")
+    print(f"  * {C_GREEN}Sing-box 订阅:{C_RESET}     {C_BLUE}{C_BOLD}{sub['singbox_url_18443']}{C_RESET}")
+    print(f"    (内置 Smart-DNS 与分流规则，开箱即用)")
+    print(f"  * 明文节点列表:     {C_BLUE}{sub['nodes_txt_url']}{C_RESET}")
+    print(f"  * 备用订阅地址:     {C_BLUE}{sub['sub_url_8443']}{C_RESET}")
 
-    print(f"\n{C_BOLD}【2. 节点链接 (可直接复制导入客户端)】{C_RESET}")
-    print(f"  {C_MAGENTA}🚀 [节点 1: 原生直连 - VPS 原生千兆极速]{C_RESET}")
-    print(f"  {C_YELLOW}{sub['direct_url']}{C_RESET}")
-    print(f"\n  {C_MAGENTA}🏠 [节点 2: 住宅穿透 - AimiliVPN 家宽出口]{C_RESET}")
-    print(f"  {C_YELLOW}{sub['resi_url']}{C_RESET}")
+    print(f"\n{C_BOLD}【2. 原生机房极速出口节点 (VPS 千兆直连 / 低延迟 / 刷4K)】{C_RESET}")
+    for idx, l in enumerate(sub["direct_links"], 1):
+        print(f"  {C_MAGENTA}[直连节点 {idx}]{C_RESET} {C_YELLOW}{l}{C_RESET}")
 
-    print(f"\n{C_BOLD}【3. 网页控制面板 (可视化国家/节点切换)】{C_RESET}")
-    print(f"  * 管理后台地址:   {C_BLUE}{C_BOLD}{auth['web_url']}{C_RESET}")
-    print(f"  * 管理员账号:     {C_YELLOW}{auth['username']}{C_RESET}")
-    print(f"  * 管理员密码:     {C_YELLOW}{auth['password']}{C_RESET}")
+    print(f"\n{C_BOLD}【3. 住宅家宽穿透出口节点 (Aimili 动态家宽 / 解锁流媒体 / 跨境防封)】{C_RESET}")
+    for idx, l in enumerate(sub["resi_links"], 1):
+        print(f"  {C_MAGENTA}[家宽节点 {idx}]{C_RESET} {C_YELLOW}{l}{C_RESET}")
+
+    print(f"\n{C_BOLD}【4. 网页控制面板 (可视化国家/节点切换)】{C_RESET}")
+    print(f"  * 管理后台地址:     {C_BLUE}{C_BOLD}{auth['web_url']}{C_RESET}")
+    print(f"  * 管理员账号:       {C_YELLOW}{auth['username']}{C_RESET}")
+    print(f"  * 管理员密码:       {C_YELLOW}{auth['password']}{C_RESET}")
     if auth["secret_path"]:
-        print(f"  * 安全访问后缀:   {C_GREEN}/{auth['secret_path']}/{C_RESET}（防探测机制，必须带后缀访问）")
+        print(f"  * 安全访问后缀:     {C_GREEN}/{auth['secret_path']}/{C_RESET}（防探测机制，必须带后缀访问）")
 
-    print(f"\n{C_BOLD}【4. Reality 核心配置参数】{C_RESET}")
-    print(f"  * 监听端口:       {C_GREEN}443{C_RESET} (TCP / xtls-rprx-vision)")
-    print(f"  * 伪装域名(SNI):  {C_GREEN}{sub['camouflage_domain']}{C_RESET}")
+    print(f"\n{C_BOLD}【5. 协议核心配置参数】{C_RESET}")
+    print(f"  * VLESS-Reality:    {C_GREEN}TCP 443{C_RESET} | 伪装 SNI: {C_GREEN}{sub['camouflage_domain']}{C_RESET}")
+    print(f"  * Hysteria 2:       {C_GREEN}UDP 443{C_RESET} (Brutal 拥塞对抗)")
+    print(f"  * TUIC v5:          {C_GREEN}UDP 8443{C_RESET} (QUIC / BBR 0-RTT)")
+    print(f"  * AnyTLS:           {C_GREEN}TCP 8444{C_RESET} (动态数据包长度混淆)")
+    print(f"  * VMess-xHTTP:      {C_GREEN}TCP 8445{C_RESET} (分块流防审查)")
     if sub["public_key"]:
-        print(f"  * 公钥 (PublicKey): {C_GREEN}{sub['public_key']}{C_RESET}")
-    if sub["short_id"]:
-        print(f"  * ShortId:        {C_GREEN}{sub['short_id']}{C_RESET}")
+        print(f"  * Reality 公钥:     {C_GREEN}{sub['public_key']}{C_RESET}")
 
-    print(f"\n{C_BOLD}【5. 客户端导入与使用说明】{C_RESET}")
-    print(f"  * {C_BOLD}手机客户端{C_RESET} (Shadowrocket / Loon / Surge / Sing-box / Clash Verge):")
-    print(f"    打开客户端 -> 添加订阅 -> 粘贴上方 {C_BLUE}{sub['sub_url_18443']}{C_RESET} -> 更新配置即可。")
-    print(f"  * {C_BOLD}电脑客户端{C_RESET} (v2rayN / Clash Verge Rev / Sing-box):")
-    print(f"    支持直接复制上方 {C_YELLOW}vless://{C_RESET} 完整单链接，通过剪贴板直接一键导入。")
+    print(f"\n{C_BOLD}【6. 客户端导入与使用说明】{C_RESET}")
+    print(f"  * {C_BOLD}推荐一键导入{C_RESET}: 复制上方 {C_BLUE}clash.yaml{C_RESET} 或 {C_BLUE}sub.txt{C_RESET} 地址直接填入客户端；")
+    print(f"  * {C_BOLD}单节点手动导入{C_RESET}: 直接复制上方任一协议单链接通过剪贴板导入；")
     print(f"  * 命令行随时调出此卡片: {C_YELLOW}ml sub{C_RESET}  |  调出网页后台信息: {C_YELLOW}ml web{C_RESET}")
     print(f"{C_GREEN}======================================================================{C_RESET}\n")
 

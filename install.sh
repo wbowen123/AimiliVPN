@@ -482,8 +482,8 @@ if [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -t 0 ]; then
     fi
     AIMILIVPN_DOMAIN=$(printf '%s' "${AIMILIVPN_DOMAIN:-}" | tr -d '[:space:]')
     if [ -z "${INSTALL_SINGBOX}" ]; then
-        echo -e "\n${BLUE}是否安装 Sing-box 高速代理服务（包含 原生直连 + Aimili住宅 双节点订阅）？${PLAIN}"
-        echo -e "  1. 是（推荐，支持单端口下发双节点订阅，VLESS Reality）"
+        echo -e "\n${BLUE}是否安装 Sing-box 全协议代理矩阵（包含 原生直连 + Aimili 动态家宽住宅 10 大节点订阅）？${PLAIN}"
+        echo -e "  1. 是（推荐，支持 VLESS-Reality / Hysteria 2 / TUIC v5 / AnyTLS / VMess）"
         echo -e "  2. 否"
         read -r -p "请选择（回车默认为 1）: " _sb_choice
         case "${_sb_choice:-1}" in
@@ -493,9 +493,8 @@ if [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -t 0 ]; then
     fi
     if [ "${INSTALL_SINGBOX}" = "y" ]; then
         if [ -z "${SINGBOX_CAMOUFLAGE}" ]; then
-            read -r -p "请输入 Reality 伪装域名 [直接回车默认 gateway.icloud.com]: " SINGBOX_CAMOUFLAGE
+            read -r -p "请输入 Reality 伪装域名 [直接回车自动本地测速优选]: " SINGBOX_CAMOUFLAGE
             SINGBOX_CAMOUFLAGE=$(printf '%s' "${SINGBOX_CAMOUFLAGE}" | tr -d '[:space:]')
-            [ -z "${SINGBOX_CAMOUFLAGE}" ] && SINGBOX_CAMOUFLAGE="gateway.icloud.com"
         fi
         INSTALL_JIUHEYI=n
     else

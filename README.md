@@ -3,9 +3,10 @@
 Bilingual: [中文](#中文) | [English](#english)
 
 本项目基于 AimiliVPN 深度定制，原生整合 **Sing-box** 现代化代理核心，在 Linux VPS 上实现：
-1. **多协议公共节点池管理**：统一采集与管理 OpenVPN、SoftEther、SSTP、L2TP 等多协议节点，提供持续可用性检测、真实连接延迟检测与 Web 管理；
-2. **Sing-box 双出站分流架构 (Dual-Outbound)**：单端口 (443 / Reality) 下发包含 **“原生 VPS 高速直连”** 与 **“Aimili 住宅 IP 穿透”** 的双节点统一订阅；
-3. **日常极速与风控破局兼得**：日常视频/下载跑满物理机千兆带宽，访问高风控站点一键无缝切换至全球住宅出口。
+1. **多协议公共住宅池管理**：统一采集与管理 OpenVPN、SoftEther、SSTP、L2TP 等多协议节点，提供持续可用性检测、真实连接延迟检测与 Web 管理；
+2. **全协议双出站分流架构 (Dual-Outbound Matrix)**：单节点支持 **VLESS-Reality、Hysteria 2、TUIC v5、AnyTLS、VMess-xHTTP** 5 大主流协议，一键下发包含 **“原生 VPS 高速直连 (5个)”** 与 **“Aimili 动态住宅家宽穿透 (5个)”** 的 10 大节点完整订阅；
+3. **全平台多格式订阅支持**：原生输出通用 Base64 (`sub.txt`)、Clash Meta / Mihomo (`clash.yaml` 内置自动延迟优选策略组)、以及 Sing-box 客户端开箱即用规则 (`singbox.json`)；
+4. **系统底层调优与智能伪装**：自动开启 Google BBR 与 TCP 网络栈缓冲区优化，本地自动对权威大厂域名执行 TLS 1.3 握手测速并智能优选最低延迟伪装 SNI。
 
 <a name="中文"></a>
 
@@ -13,22 +14,24 @@ Bilingual: [中文](#中文) | [English](#english)
 
 ### 1. 系统名称与定位
 
-**Aimili VPN + Sing-box｜双出站节点管理系统**
+**Aimili VPN + Sing-box｜全协议双出站节点管理系统**
 
 系统由两大核心组成：
-- **前端代理接入（Sing-box）**：监听 443 端口，采用抗封锁能力出色的 VLESS + Reality 协议，通过用户鉴权（`auth_user`）实现毫秒级双出站分流。
+- **前端多协议代理矩阵（Sing-box）**：监听 443 (TCP Reality & UDP Hy2)、8443 (UDP TUIC)、8444 (TCP AnyTLS)、8445 (TCP VMess)，通过用户鉴权（`auth_user`）实现毫秒级双出站分流。
 - **后端住宅网桥（AimiliVPN）**：持续维护全球公共/住宅节点池，拨号建立虚拟隧道，并在 `127.0.0.1:8500` 提供 SOCKS5 出站网桥，使特定流量能以第三方住宅 IP 出站。
 
-### 2. 端口架构
+### 2. 端口与协议架构
 
-| 用途 | 端口 | 监听方式 | 说明 |
-| --- | ---: | --- | --- |
-| Sing-box 代理入站 (VLESS Reality) | `443/tcp` | 公网 | 核心代理入口，单端口下发双节点 |
-| HTTPS 管理后台 | `8443/tcp` | 公网，Nginx 反代 `127.0.0.1:8501` | 可视化管理面板，支持国家/节点切换 |
-| HTTPS 订阅入口 | `18443/tcp` | 公网，Nginx 静态托管 | 提供通用 Base64 订阅文件 |
-| 备用订阅路径 | `8443/tcp` | 公网，`/sub/sub.txt` | 后台同端口备用订阅路径 |
-| HTTP/SOCKS5 代理网桥 | `8500/tcp` | 仅本机 `127.0.0.1`（或白名单） | AimiliVPN 隧道出口网桥 |
-| 管理后台内部服务 | `8501/tcp` | 仅本机 `127.0.0.1` | Python Web 服务，严禁暴露到公网 |
+| 协议 / 服务 | 端口 | 传输载体 | 说明 |
+| :--- | :--- | :--- | :--- |
+| **VLESS-Reality** | `443/tcp` | TCP + TLS Vision | 核心伪装入口，借用大厂证书免个人证书 |
+| **Hysteria 2** | `443/udp` | UDP (Brutal) | 恶劣线路暴力加速，晚高峰不丢包 |
+| **TUIC v5** | `8443/udp` | UDP / QUIC (BBR) | 原生 BBR 拥塞控制，0-RTT 极速秒开 |
+| **AnyTLS** | `8444/tcp` | TCP (包长混淆) | 动态数据包长度填充，防主动探测特征 |
+| **VMess-xHTTP** | `8445/tcp` | TCP (HTTP/3 分块) | 标准分段 HTTP 流，防封锁与审查 |
+| **HTTPS 管理后台** | `8443/tcp` | TCP, Nginx 反代 8501 | 可视化管理面板，支持国家/节点切换 |
+| **全格式订阅入口** | `18443/tcp` | TCP, Nginx 静态托管 | 提供 `sub.txt`、`clash.yaml`、`singbox.json` |
+| **HTTP/SOCKS5 网桥** | `8500/tcp` | 本机 `127.0.0.1` | AimiliVPN 动态住宅隧道出口网桥 |
 
 ### 3. 一键部署与管理
 
