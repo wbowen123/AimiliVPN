@@ -174,7 +174,7 @@ fi
 install -m 0644 "$ROOT_DIR/scripts/nginx/aimilivpn-production.conf" "$NGINX_CONF"
 NGINX_SERVER_NAME="${ADOPTED_DOMAIN:-${AIMILIVPN_DOMAIN:-}}"
 if [ -n "$NGINX_SERVER_NAME" ]; then
-  sed -i "s/server_name _;/server_name ${NGINX_SERVER_NAME};/" "$NGINX_CONF"
+  sed -i "s/server_name _;/server_name ${NGINX_SERVER_NAME};/g" "$NGINX_CONF"
 fi
 rm -f "$ACME_CONF"
 

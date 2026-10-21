@@ -55,20 +55,22 @@ install_singbox_bin() {
     fi
 
     echo -e "${YELLOW}  -> 正在获取 Sing-box v${target_ver} (${SB_ARCH})...${PLAIN}"
-    local download_url="https://github.com/SagerNet/sing-box/releases/download/v${target_ver}/sing-box-${target_ver}-linux-${SB_ARCH}.tar.gz"
-    local ghproxy_url="https://ghfast.top/${download_url}"
-    local tmp_tar="/tmp/sing-box-${target_ver}.tar.gz"
-    local tmp_dir="/tmp/sing-box-extract"
-
-    rm -rf "$tmp_dir" "$tmp_tar"
-    mkdir -p "$tmp_dir"
-
-    if ! curl -fsSL --connect-timeout 10 --max-time 60 "$download_url" -o "$tmp_tar" 2>/dev/null; then
-        echo -e "${YELLOW}  -> 直连 GitHub 下载超时，正在尝试加速镜像源...${PLAIN}"
-        curl -fsSL --connect-timeout 15 --max-time 90 "$ghproxy_url" -o "$tmp_tar" || {
-            echo -e "${RED}错误: Sing-box 下载失败，请检查网络连接！${PLAIN}"
-            exit 1
-        }
+    local mirrors=(
+        "$download_url"
+        "https://ghfast.top/${download_url}"
+        "https://mirror.ghproxy.com/${download_url}"
+    )
+    local downloaded=0
+    for m in "${mirrors[@]}"; do
+        if curl -fsSL --connect-timeout 8 --max-time 60 "$m" -o "$tmp_tar" 2>/dev/null; then
+            downloaded=1
+            break
+        fi
+        echo -e "${YELLOW}  -> 直连或镜像源超时，尝试下一个加速源...${PLAIN}"
+    done
+    if [ "$downloaded" != "1" ]; then
+        echo -e "${RED}错误: Sing-box 下载失败，请检查网络连接！${PLAIN}"
+        exit 1
     fi
 
     tar -xzf "$tmp_tar" -C "$tmp_dir"
@@ -262,13 +264,20 @@ else
 fi
 
 # 7. 生成客户端链接与订阅文件
+url_encode() {
+    python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$1" 2>/dev/null || echo "$1"
+}
+
 NODE_NAME_DIRECT="🚀 [VPS-直连] 高速原生"
 NODE_NAME_RESI="🏠 [VPS-住宅] Aimili穿透"
 
-URL_DIRECT="vless://${DIRECT_UUID}@${PUBLIC_IP}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${CAMOUFLAGE_DOMAIN}&fp=chrome&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}&type=tcp#$(python3 -c "import urllib.parse; print(urllib.parse.quote('$NODE_NAME_DIRECT'))")"
-URL_RESI="vless://${RESI_UUID}@${PUBLIC_IP}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${CAMOUFLAGE_DOMAIN}&fp=chrome&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}&type=tcp#$(python3 -c "import urllib.parse; print(urllib.parse.quote('$NODE_NAME_RESI'))")"
+ENCODED_DIRECT=$(url_encode "$NODE_NAME_DIRECT")
+ENCODED_RESI=$(url_encode "$NODE_NAME_RESI")
 
-# 写入纯文本链接
+URL_DIRECT="vless://${DIRECT_UUID}@${PUBLIC_IP}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${CAMOUFLAGE_DOMAIN}&fp=chrome&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}&type=tcp#${ENCODED_DIRECT}"
+URL_RESI="vless://${RESI_UUID}@${PUBLIC_IP}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${CAMOUFLAGE_DOMAIN}&fp=chrome&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}&type=tcp#${ENCODED_RESI}"
+
+# 写入纯文本节点链接文件
 cat > "$DATA_DIR/singbox_links.txt" <<EOF
 # AimiliVPN + Sing-box 双节点链接
 # 节点 1：原生 VPS IP 直连（千兆高速）
@@ -278,11 +287,15 @@ ${URL_DIRECT}
 ${URL_RESI}
 EOF
 
-# 写入 Base64 订阅
+# 写入 Base64 订阅文件
 SUB_CONTENT=$(printf '%s\n%s\n' "$URL_DIRECT" "$URL_RESI" | base64 | tr -d '\n\r')
 echo "$SUB_CONTENT" > "$WWW_SUB_DIR/sub.txt"
 echo "$SUB_CONTENT" > "$SUB_DIR/sub.txt"
 chmod 644 "$WWW_SUB_DIR/sub.txt"
+
+# 同时也提供明文 nodes.txt 供部分特定客户端读取
+cp -f "$DATA_DIR/singbox_links.txt" "$WWW_SUB_DIR/nodes.txt" 2>/dev/null || true
+chmod 644 "$WWW_SUB_DIR/nodes.txt" 2>/dev/null || true
 
 # 8. 写入汇总数据
 cat > "$DATA_DIR/singbox_nodes.json" <<EOF
@@ -298,5 +311,13 @@ cat > "$DATA_DIR/singbox_nodes.json" <<EOF
   "resi_url": "${URL_RESI}"
 }
 EOF
+
+# 9. 重新载入 Nginx 订阅配置
+if command -v nginx >/dev/null 2>&1; then
+    if nginx -t >/dev/null 2>&1; then
+        systemctl reload nginx >/dev/null 2>&1 || systemctl restart nginx >/dev/null 2>&1 || true
+        echo -e "${GREEN}  -> Nginx 订阅入口 (18443 & /sub/) 已就绪${PLAIN}"
+    fi
+fi
 
 echo -e "\n${GREEN}Sing-box 双节点与订阅生成完成！${PLAIN}"
