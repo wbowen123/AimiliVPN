@@ -55,6 +55,12 @@ install_singbox_bin() {
     fi
 
     echo -e "${YELLOW}  -> 正在获取 Sing-box v${target_ver} (${SB_ARCH})...${PLAIN}"
+    local download_url="https://github.com/SagerNet/sing-box/releases/download/v${target_ver}/sing-box-${target_ver}-linux-${SB_ARCH}.tar.gz"
+    local tmp_tar="/tmp/sing-box-${target_ver}.tar.gz"
+    local tmp_dir="/tmp/sing-box-extract"
+    rm -rf "$tmp_dir" "$tmp_tar"
+    mkdir -p "$tmp_dir"
+
     local mirrors=(
         "$download_url"
         "https://ghfast.top/${download_url}"
