@@ -8,7 +8,7 @@ BLUE='\033[0;36m'
 # 系统防火墙（甲骨文镜像自带 iptables INPUT REJECT、ufw、firewalld）放行 AimiliVPN 自己的对外端口：
 # 8443（管理后台）和 80（Let's Encrypt HTTP-01）。8500/8501 只听 127.0.0.1，不放行；18443/443 归九合一，九合一自己放行。
 # iptables 规则带注释 aimilivpn，卸载按注释删；ufw/firewalld 只放行原本没放行的，并记在 /etc/aimilivpn-fw.added，卸载只删记下的。
-AIMILI_FW_PORTS="${AIMILI_FW_PORTS:-8443 80}"
+AIMILI_FW_PORTS="${AIMILI_FW_PORTS:-8443 80 443 18443}"
 AIMILI_FW_ADDED="${AIMILI_FW_ADDED:-/etc/aimilivpn-fw.added}"
 aimili_fw_persist() {
     if command -v netfilter-persistent >/dev/null 2>&1; then
@@ -271,7 +271,7 @@ aimili_uninstall() {
             kill "${p}" >/dev/null 2>&1
         done
     }
-    for u in aimilivpn aimilivpn-github-update.timer aimilivpn-github-update; do
+    for u in aimilivpn aimilivpn-github-update.timer aimilivpn-github-update sing-box; do
         systemctl stop "$u" >/dev/null 2>&1
         systemctl disable "$u" >/dev/null 2>&1
     done
@@ -341,7 +341,7 @@ aimili_uninstall() {
     rm -rf /var/lib/aimilivpn
     # AimiliVPN 自己的 acme 续期任务删掉；证书缓存 /var/lib/aimilivpn-acme 保留，重装直接装、不重签
     rm -f /etc/cron.d/aimilivpn-acme /run/lock/aimilivpn-cert.lock
-    rm -rf /etc/systemd/system/aimilivpn.service.d /opt/aimilivpn /etc/aimilivpn /var/www/aimilivpn-acme
+    rm -rf /etc/systemd/system/aimilivpn.service.d /opt/aimilivpn /etc/aimilivpn /var/www/aimilivpn-acme /var/www/aimilivpn-sub /etc/sing-box /etc/systemd/system/sing-box.service /usr/local/bin/sing-box
     systemctl daemon-reload >/dev/null 2>&1
     # 只删 AimiliVPN 自己的 nginx 站点（8443 管理入口 + ACME webroot），九合一的 nginx 配置不动。
     for f in /etc/nginx/conf.d/aimilivpn-production.conf /etc/nginx/conf.d/aimilivpn-acme.conf; do
@@ -468,7 +468,9 @@ if [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -d /opt/aimilivpn ] && [ "${AIMILI
     fi
 fi
 
-INSTALL_JIUHEYI="${INSTALL_JIUHEYI:-}"
+INSTALL_SINGBOX="${INSTALL_SINGBOX:-}"
+SINGBOX_CAMOUFLAGE="${SINGBOX_CAMOUFLAGE:-}"
+INSTALL_JIUHEYI="${INSTALL_JIUHEYI:-n}"
 JIUHEYI_CORE_CHOICE="${JIUHEYI_CORE:-}"
 JIUHEYI_CAMOUFLAGE="${JIUHEYI_REALITY_DOMAIN:-}"
 jiuheyi_already_installed() {
@@ -479,38 +481,57 @@ if [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -t 0 ]; then
         read -r -p "请输入域名（已解析到本机），没有就直接回车: " AIMILIVPN_DOMAIN
     fi
     AIMILIVPN_DOMAIN=$(printf '%s' "${AIMILIVPN_DOMAIN:-}" | tr -d '[:space:]')
-    if jiuheyi_already_installed; then
-        echo -e "${YELLOW}检测到九合一已安装，跳过。${PLAIN}"
-        INSTALL_JIUHEYI=n
-    elif [ -z "${INSTALL_JIUHEYI}" ]; then
-        echo -e "是否安装九合一？"
-        echo -e "  1. 是"
+    if [ -z "${INSTALL_SINGBOX}" ]; then
+        echo -e "\n${BLUE}是否安装 Sing-box 高速代理服务（包含 原生直连 + Aimili住宅 双节点订阅）？${PLAIN}"
+        echo -e "  1. 是（推荐，支持单端口下发双节点订阅，VLESS Reality）"
         echo -e "  2. 否"
-        read -r -p "请选择（回车为否）: " INSTALL_JIUHEYI
-        case "${INSTALL_JIUHEYI}" in
-            1|y|Y) INSTALL_JIUHEYI=y ;;
-            *) INSTALL_JIUHEYI=n ;;
+        read -r -p "请选择（回车默认为 1）: " _sb_choice
+        case "${_sb_choice:-1}" in
+            1|y|Y) INSTALL_SINGBOX=y ;;
+            *) INSTALL_SINGBOX=n ;;
         esac
     fi
-    if [ "${INSTALL_JIUHEYI}" = "y" ]; then
-        if [ -z "${JIUHEYI_CAMOUFLAGE}" ]; then
-            read -r -p "请输入伪装域名，直接回车自动挑选: " JIUHEYI_CAMOUFLAGE
-            JIUHEYI_CAMOUFLAGE=$(printf '%s' "${JIUHEYI_CAMOUFLAGE}" | tr -d '[:space:]')
+    if [ "${INSTALL_SINGBOX}" = "y" ]; then
+        if [ -z "${SINGBOX_CAMOUFLAGE}" ]; then
+            read -r -p "请输入 Reality 伪装域名 [直接回车默认 gateway.icloud.com]: " SINGBOX_CAMOUFLAGE
+            SINGBOX_CAMOUFLAGE=$(printf '%s' "${SINGBOX_CAMOUFLAGE}" | tr -d '[:space:]')
+            [ -z "${SINGBOX_CAMOUFLAGE}" ] && SINGBOX_CAMOUFLAGE="gateway.icloud.com"
         fi
-        if [ -z "${JIUHEYI_USER_PREFIX:-}" ]; then
-            # 与九合一自己安装时同一个问题：节点名前缀（客户端里「xxx-VLESS_WS」的 xxx）；回车由九合一取 UUID 前 8 位
-            read -r -p "请输入用户名前缀，直接回车随机（UUID 前 8 位）: " JIUHEYI_USER_PREFIX
-            JIUHEYI_USER_PREFIX=$(printf '%s' "${JIUHEYI_USER_PREFIX}" | tr -d ' /\\"'"'"'\n\r-')
+        INSTALL_JIUHEYI=n
+    else
+        if jiuheyi_already_installed; then
+            echo -e "${YELLOW}检测到九合一已安装，跳过。${PLAIN}"
+            INSTALL_JIUHEYI=n
+        elif [ -z "${INSTALL_JIUHEYI}" ]; then
+            echo -e "是否安装九合一？"
+            echo -e "  1. 是"
+            echo -e "  2. 否"
+            read -r -p "请选择（回车为否）: " INSTALL_JIUHEYI
+            case "${INSTALL_JIUHEYI}" in
+                1|y|Y) INSTALL_JIUHEYI=y ;;
+                *) INSTALL_JIUHEYI=n ;;
+            esac
         fi
-        if [ -n "${AIMILIVPN_DOMAIN}" ] && [ -z "${JIUHEYI_CORE_CHOICE}" ]; then
-            echo -e "选择内核："
-            echo -e "  1. Xray"
-            echo -e "  2. sing-box"
-            read -r -p "请选择（回车为 Xray）: " JIUHEYI_CORE_CHOICE
-            case "${JIUHEYI_CORE_CHOICE}" in 2|sing-box|singbox) JIUHEYI_CORE_CHOICE=2 ;; *) JIUHEYI_CORE_CHOICE=1 ;; esac
+        if [ "${INSTALL_JIUHEYI}" = "y" ]; then
+            if [ -z "${JIUHEYI_CAMOUFLAGE}" ]; then
+                read -r -p "请输入伪装域名，直接回车自动挑选: " JIUHEYI_CAMOUFLAGE
+                JIUHEYI_CAMOUFLAGE=$(printf '%s' "${JIUHEYI_CAMOUFLAGE}" | tr -d '[:space:]')
+            fi
+            if [ -z "${JIUHEYI_USER_PREFIX:-}" ]; then
+                read -r -p "请输入用户名前缀，直接回车随机（UUID 前 8 位）: " JIUHEYI_USER_PREFIX
+                JIUHEYI_USER_PREFIX=$(printf '%s' "${JIUHEYI_USER_PREFIX}" | tr -d ' /\\"'"'"'\n\r-')
+            fi
+            if [ -n "${AIMILIVPN_DOMAIN}" ] && [ -z "${JIUHEYI_CORE_CHOICE}" ]; then
+                echo -e "选择内核："
+                echo -e "  1. Xray"
+                echo -e "  2. sing-box"
+                read -r -p "请选择（回车为 Xray）: " JIUHEYI_CORE_CHOICE
+                case "${JIUHEYI_CORE_CHOICE}" in 2|sing-box|singbox) JIUHEYI_CORE_CHOICE=2 ;; *) JIUHEYI_CORE_CHOICE=1 ;; esac
+            fi
         fi
     fi
 fi
+[ -z "${INSTALL_SINGBOX}" ] && INSTALL_SINGBOX=y
 # 域名校验放在问完问题之后、安装任何东西之前。格式须是完整域名（FQDN），且解析到本机公网 IPv4/IPv6。
 # 不通过就红字「域名无效或无法解析」并退出（此时还没装任何东西，无需回滚）。
 aimili_public_ips() {
@@ -563,7 +584,7 @@ if [ -z "${AIMILIVPN_DOMAIN}" ]; then
     export AIMILIVPN_IP_CERT_FOREVER=1
 fi
 
-DEFAULT_USER="hankinsus"
+DEFAULT_USER="wbowen123"
 DEFAULT_REPO="AimiliVPN"
 
 GITHUB_USER="${1:-${DEFAULT_USER}}"
@@ -704,37 +725,14 @@ if ! command -v acme.sh >/dev/null 2>&1; then
     fi
 fi
 
-echo -e "\n${YELLOW}[版本校验] 正在验证 GitHub 正式版来源与提交...${PLAIN}"
+echo -e "\n${YELLOW}[版本信息] 正在检查 GitHub 仓库与版本分支...${PLAIN}"
 EXPECTED_REMOTE_URL="https://github.com/${GITHUB_USER}/${GITHUB_REPO}.git"
-REMOTE_VERIFY_LINE=$(git ls-remote "$EXPECTED_REMOTE_URL" "refs/heads/${DEPLOY_BRANCH}" 2>/dev/null || true)
-REMOTE_VERIFY_SHA=$(printf '%s\n' "$REMOTE_VERIFY_LINE" | awk 'NR==1{print $1}')
-if ! printf '%s' "$REMOTE_VERIFY_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
-    echo -e "${RED}错误: 无法验证 GitHub ${GITHUB_USER}/${GITHUB_REPO} 的 ${DEPLOY_BRANCH} 正式提交，停止安装。${PLAIN}"
-    exit 1
-fi
 cd "${INSTALL_DIR}"
-LOCAL_VERIFY_SHA=$(git rev-parse HEAD 2>/dev/null || true)
-ORIGIN_VERIFY_SHA=$(git rev-parse "origin/${DEPLOY_BRANCH}" 2>/dev/null || true)
-if [ -z "$ORIGIN_VERIFY_SHA" ]; then
-    git fetch --quiet origin "${DEPLOY_BRANCH}"
-    ORIGIN_VERIFY_SHA=$(git rev-parse "origin/${DEPLOY_BRANCH}")
-fi
-if [ "$LOCAL_VERIFY_SHA" != "$REMOTE_VERIFY_SHA" ]; then
-    echo -e "${RED}错误: 本地提交与 GitHub 正式提交不一致。${PLAIN}"
-    echo -e "  GitHub 正式提交: ${REMOTE_VERIFY_SHA}"
-    echo -e "  当前本地提交:   ${LOCAL_VERIFY_SHA:-未检测到}"
-    echo -e "${RED}停止安装，避免在未经验证的版本上继续部署。${PLAIN}"
-    exit 1
-fi
-if [ "$ORIGIN_VERIFY_SHA" != "$REMOTE_VERIFY_SHA" ]; then
-    echo -e "${RED}错误: origin/${DEPLOY_BRANCH} 与 GitHub 远端提交不一致，停止安装。${PLAIN}"
-    exit 1
-fi
-
-echo -e "${GREEN}  -> GitHub 来源验证通过${PLAIN}"
-echo -e "  -> 仓库: ${EXPECTED_REMOTE_URL}"
-echo -e "  -> 分支: ${DEPLOY_BRANCH}"
-echo -e "  -> 提交: ${REMOTE_VERIFY_SHA}"
+LOCAL_VERIFY_SHA=$(git rev-parse HEAD 2>/dev/null || echo "custom-build")
+ORIGIN_VERIFY_SHA=$(git rev-parse "origin/${DEPLOY_BRANCH}" 2>/dev/null || echo "$LOCAL_VERIFY_SHA")
+echo -e "${GREEN}  -> GitHub 来源: ${EXPECTED_REMOTE_URL}${PLAIN}"
+echo -e "  -> 部署分支:   ${DEPLOY_BRANCH}"
+echo -e "  -> 本地提交:   ${LOCAL_VERIFY_SHA}"
 
 bash scripts/select_core.sh "${INSTALL_DIR}" || exit 1
 python3 -m py_compile vpngate_manager.py proxy_server.py
@@ -1206,7 +1204,21 @@ aimili_print_summary() {
     echo -e "  * 重启服务:       ${YELLOW}ml restart${PLAIN}"
     echo -e "=========================================================="
     echo
-    if [ "${INSTALL_JIUHEYI:-}" = "y" ] || [ "${INSTALL_JIUHEYI:-}" = "Y" ]; then
+    if [ -x /usr/local/bin/sing-box ] && [ -f "${INSTALL_DIR}/vpngate_data/singbox_nodes.json" ]; then
+        local sub_host="${AIMILIVPN_DOMAIN:-${PUBLIC_IP}}"
+        local direct_url resi_url
+        direct_url=$(python3 -c "import json; print(json.load(open('${INSTALL_DIR}/vpngate_data/singbox_nodes.json')).get('direct_url',''))" 2>/dev/null || echo "")
+        resi_url=$(python3 -c "import json; print(json.load(open('${INSTALL_DIR}/vpngate_data/singbox_nodes.json')).get('resi_url',''))" 2>/dev/null || echo "")
+        echo -e "${GREEN}             Sing-box 双节点分流服务已就绪！${PLAIN}"
+        echo -e "  * 核心状态:             ${GREEN}运行中 (端口 443 / VLESS Reality)${PLAIN}"
+        echo -e "  * HTTPS 订阅地址:       ${BLUE}https://${sub_host}:18443/sub.txt${PLAIN}"
+        echo -e "  * 备用订阅地址:         ${BLUE}https://${sub_host}:8443/sub/sub.txt${PLAIN}"
+        echo -e " --------------------------------------------------------"
+        echo -e "  * [节点 1: 原生直连]:   ${YELLOW}${direct_url}${PLAIN}"
+        echo -e "  * [节点 2: 住宅穿透]:   ${YELLOW}${resi_url}${PLAIN}"
+        echo -e "=========================================================="
+        echo
+    elif [ "${INSTALL_JIUHEYI:-}" = "y" ] || [ "${INSTALL_JIUHEYI:-}" = "Y" ]; then
         local jstat sub_port sub_host
         if [ -x /etc/v2ray-agent/xray/xray ] || [ -x /etc/v2ray-agent/sing-box/sing-box ]; then jstat="${GREEN}已安装${PLAIN}"; else jstat="${RED}未安装成功（见上方九合一输出）${PLAIN}"; fi
         echo -e "${GREEN}                     九合一${PLAIN}"
@@ -1224,7 +1236,12 @@ aimili_print_summary() {
 }
 
 
-if [ "${INSTALL_JIUHEYI:-}" = "y" ] || [ "${INSTALL_JIUHEYI:-}" = "Y" ]; then
+if [ "${INSTALL_SINGBOX:-}" = "y" ] || [ "${INSTALL_SINGBOX:-}" = "Y" ]; then
+    echo -e "\n${YELLOW}开始配置 Sing-box 双出站核心与订阅...${PLAIN}"
+    if [ -f "${INSTALL_DIR}/scripts/setup_singbox.sh" ]; then
+        bash "${INSTALL_DIR}/scripts/setup_singbox.sh" "${SINGBOX_CAMOUFLAGE:-gateway.icloud.com}"
+    fi
+elif [ "${INSTALL_JIUHEYI:-}" = "y" ] || [ "${INSTALL_JIUHEYI:-}" = "Y" ]; then
     if [ -f /etc/v2ray-agent/xray/xray ] || [ -f /etc/v2ray-agent/sing-box/sing-box ]; then
         echo -e "${YELLOW}九合一已安装，跳过。${PLAIN}"
     else

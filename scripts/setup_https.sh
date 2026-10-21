@@ -77,7 +77,7 @@ esac
 rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/00-default /etc/nginx/conf.d/default.conf
 rm -f /etc/nginx/http.d/default.conf 2>/dev/null || true
 
-mkdir -p "$TLS_DIR" "$ACME_ROOT/.well-known/acme-challenge" "$SUB_DIR"
+mkdir -p "$TLS_DIR" "$ACME_ROOT/.well-known/acme-challenge" "$SUB_DIR" "/var/www/aimilivpn-sub"
 chmod 700 "$TLS_DIR"
 PUBLIC_IP="${PUBLIC_IP:-$(curl -4fsS --max-time 5 https://api.ipify.org || true)}"
 [ -z "$PUBLIC_IP" ] && PUBLIC_IP="127.0.0.1"

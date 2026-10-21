@@ -66,28 +66,28 @@ OpenVPN 的节点延迟只使用真实 OpenVPN 隧道建立后的实际检测结
 
 ### 6. 一键部署
 
-正式版仓库：[hankinsus/AimiliVPN](https://github.com/hankinsus/AimiliVPN)
+仓库地址：[wbowen123/AimiliVPN](https://github.com/wbowen123/AimiliVPN)
 
-安装脚本：[install.sh](https://raw.githubusercontent.com/hankinsus/AimiliVPN/main/install.sh)
+安装脚本：[install.sh](https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/install.sh)
 
-支持 x86_64 / aarch64，系统 Python 3.9–3.13（安装时自动选择匹配的模块）。
+支持 x86_64 / aarch64，系统 Python 3.9–3.13。原生集成 **Sing-box** 内核，单端口下发双节点订阅：
+- **🚀 [VPS-直连] 原生千兆高速**：走 VPS 物理网卡，跑满带宽、最低延迟；
+- **🏠 [VPS-住宅] Aimili穿透**：分流至 127.0.0.1:8500，经 AimiliVPN 隧道出口，专治各种风控封锁。
 
 以 root 用户执行：
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/hankinsus/AimiliVPN/main/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/install.sh)
 ```
 
-安装完成后，终端会输出当前可用的 HTTPS 管理地址。网页中也会显示当前推荐访问地址。
-
-安装脚本带菜单：1 安装 / 2 完全卸载。会检测系统、内存、端口占用，可选有域名或无域名（IP 自签证书），可选同时安装九合一并默认分流到 8500。
+安装完成后，终端会输出当前可用的 HTTPS 管理地址与 Sing-box 双节点订阅链接。
 
 完全卸载：
 
 ```bash
 ml uninstall
 # 或
-bash <(curl -Ls https://raw.githubusercontent.com/hankinsus/AimiliVPN/main/install.sh) uninstall
+bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/install.sh) uninstall
 ```
 
 ### 7. 快速使用
@@ -227,28 +227,28 @@ Protocol help pages use public technical information from the [official VPN Gate
 
 ### 6. One-click installation
 
-Official repository: [hankinsus/AimiliVPN](https://github.com/hankinsus/AimiliVPN)
+Repository: [wbowen123/AimiliVPN](https://github.com/wbowen123/AimiliVPN)
 
-Installer: [install.sh](https://raw.githubusercontent.com/hankinsus/AimiliVPN/main/install.sh)
+Installer: [install.sh](https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/install.sh)
 
-Supports x86_64 / aarch64 with system Python 3.9–3.13 (the installer picks the matching modules automatically).
+Supports x86_64 / aarch64 with Python 3.9–3.13. Integrated with **Sing-box** core to provide dual-node subscriptions:
+- **🚀 [VPS-Direct]**: Native physical gigabit egress with minimal latency.
+- **🏠 [VPS-Residential]**: Routed via 127.0.0.1:8500 through AimiliVPN tunnel egress.
 
 Run as root:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/hankinsus/AimiliVPN/main/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/install.sh)
 ```
 
-After installation, the terminal prints the current HTTPS management address. The web console also displays the recommended address.
-
-The installer has a menu (1 install / 2 full uninstall), checks OS/memory/ports, supports domain or no-domain (IP self-signed cert) mode, and can optionally install nine-in-one routed to 8500 by default.
+After installation, the terminal prints the HTTPS management address and Sing-box dual-node subscription URL.
 
 Full uninstall:
 
 ```bash
 ml uninstall
 # or
-bash <(curl -Ls https://raw.githubusercontent.com/hankinsus/AimiliVPN/main/install.sh) uninstall
+bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/install.sh) uninstall
 ```
 
 ### 7. Quick start
