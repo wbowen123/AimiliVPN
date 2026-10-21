@@ -56,6 +56,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/insta
 ```bash
 ml          # 启动全新交互式双核心管理控制台（支持查看节点、控制服务等）
 ml sub      # 随时在终端快速打印双节点链接与 HTTPS 订阅卡片
+ml web      # 查看网页控制面板地址、安全后缀、管理员账号与密码
 ml status   # 查看 AimiliVPN 运行状态与当前活跃住宅节点
 ml logs     # 查看 AimiliVPN 实时拨号与隧道日志
 ml restart  # 重启 AimiliVPN 住宅网关

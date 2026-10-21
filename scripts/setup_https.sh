@@ -251,11 +251,25 @@ if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>
   firewall-cmd --reload >/dev/null || true
 fi
 
-if [ -n "${AIMILIVPN_DOMAIN:-}" ]; then
-  echo "HTTPS 管理后台: https://${AIMILIVPN_DOMAIN}:8443/  （备用 IP: https://${PUBLIC_IP}:8443/）"
-else
-  echo "HTTPS 管理后台: https://${PUBLIC_IP}:8443/"
+SECRET_PATH=""
+UI_USER=""
+UI_PASS=""
+AUTH_FILE="$ROOT_DIR/vpngate_data/ui_auth.json"
+if [ -f "$AUTH_FILE" ]; then
+  SECRET_PATH=$(python3 -c "import json; print(json.load(open('$AUTH_FILE')).get('secret_path',''))" 2>/dev/null || true)
+  UI_USER=$(python3 -c "import json; print(json.load(open('$AUTH_FILE')).get('username',''))" 2>/dev/null || true)
+  UI_PASS=$(python3 -c "import json; print(json.load(open('$AUTH_FILE')).get('password',''))" 2>/dev/null || true)
 fi
+SP_SUFFIX=""
+[ -n "$SECRET_PATH" ] && SP_SUFFIX="${SECRET_PATH}/"
+
+if [ -n "${AIMILIVPN_DOMAIN:-}" ]; then
+  echo "HTTPS 管理后台: https://${AIMILIVPN_DOMAIN}:8443/${SP_SUFFIX}  （备用 IP: https://${PUBLIC_IP}:8443/${SP_SUFFIX}）"
+else
+  echo "HTTPS 管理后台: https://${PUBLIC_IP}:8443/${SP_SUFFIX}"
+fi
+[ -n "$UI_USER" ] && echo "网页管理账号:   ${UI_USER}"
+[ -n "$UI_PASS" ] && echo "网页管理密码:   ${UI_PASS}"
 if [ -n "${AIMILIVPN_DOMAIN:-}" ]; then
   echo "HTTPS 订阅入口: https://${AIMILIVPN_DOMAIN}:18443/  （备用 IP: https://${PUBLIC_IP}:18443/）"
 else
