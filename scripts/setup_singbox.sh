@@ -114,6 +114,18 @@ if [ -z "$PUBLIC_IP" ] || [ "$PUBLIC_IP" = "您的服务器公网IP" ]; then
     PUBLIC_IP=$(curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null || curl -4fsS --max-time 5 https://ifconfig.me 2>/dev/null || echo "127.0.0.1")
 fi
 
+DOMAIN="${AIMILIVPN_DOMAIN:-}"
+if [ -z "$DOMAIN" ] && [ -f "$DATA_DIR/ui_auth.json" ]; then
+    DOMAIN=$(python3 -c "import json; print(json.load(open('$DATA_DIR/ui_auth.json')).get('web_domain',''))" 2>/dev/null || true)
+fi
+if [ -z "$DOMAIN" ] && [ -f "$PROXY_ENV_FILE" ]; then
+    DOMAIN=$(grep '^AIMILIVPN_DOMAIN=' "$PROXY_ENV_FILE" | cut -d'=' -f2 | tr -d '"'"' " || true)
+fi
+if [ -z "$DOMAIN" ] && [ -f /etc/aimilivpn/tls/fullchain.pem ] && command -v openssl >/dev/null 2>&1; then
+    DOMAIN=$(openssl x509 -in /etc/aimilivpn/tls/fullchain.pem -noout -ext subjectAltName 2>/dev/null | grep -o 'DNS:[^ ,]*' | head -1 | cut -d: -f2 || true)
+fi
+DOMAIN=$(echo "$DOMAIN" | tr -d '[:space:]')
+
 # 4. 生成或保留 Reality 密钥与 UUID
 KEY_FILE="$DATA_DIR/singbox_keys.json"
 REALITY_KEYPAIR=""
@@ -307,6 +319,7 @@ chmod 644 "$WWW_SUB_DIR/nodes.txt" 2>/dev/null || true
 cat > "$DATA_DIR/singbox_nodes.json" <<EOF
 {
   "public_ip": "${PUBLIC_IP}",
+  "domain": "${DOMAIN}",
   "port": 443,
   "camouflage_domain": "${CAMOUFLAGE_DOMAIN}",
   "public_key": "${PUBLIC_KEY}",
@@ -318,12 +331,68 @@ cat > "$DATA_DIR/singbox_nodes.json" <<EOF
 }
 EOF
 
-# 9. 重新载入 Nginx 订阅配置
-if command -v nginx >/dev/null 2>&1; then
-    if nginx -t >/dev/null 2>&1; then
-        systemctl reload nginx >/dev/null 2>&1 || systemctl restart nginx >/dev/null 2>&1 || true
-        echo -e "${GREEN}  -> Nginx 订阅入口 (18443 & /sub/) 已就绪${PLAIN}"
+# 9. 部署并重新载入 Nginx 订阅配置
+NGINX_CONF_DEST=""
+if [ -d /etc/nginx/conf.d ]; then
+    NGINX_CONF_DEST="/etc/nginx/conf.d/aimilivpn-production.conf"
+elif [ -d /etc/nginx/http.d ]; then
+    NGINX_CONF_DEST="/etc/nginx/http.d/aimilivpn-production.conf"
+fi
+
+if [ -n "$NGINX_CONF_DEST" ] && [ -f "$ROOT_DIR/scripts/nginx/aimilivpn-production.conf" ]; then
+    install -m 0644 "$ROOT_DIR/scripts/nginx/aimilivpn-production.conf" "$NGINX_CONF_DEST"
+    if [ -n "$DOMAIN" ]; then
+        sed -i "s/server_name _;/server_name ${DOMAIN};/g" "$NGINX_CONF_DEST"
     fi
 fi
 
+if command -v nginx >/dev/null 2>&1; then
+    if nginx -t >/dev/null 2>&1; then
+        systemctl reload nginx >/dev/null 2>&1 || systemctl restart nginx >/dev/null 2>&1 || true
+        echo -e "${GREEN}  -> Nginx 订阅入口 (端口 18443 & /sub/) 已就绪${PLAIN}"
+    else
+        echo -e "${RED}警告: Nginx 语法检查未通过，请检查 /etc/nginx/ 配置${PLAIN}"
+        nginx -t 2>&1 | tail -3 || true
+    fi
+fi
+
+# 10. 防火墙端口放行 (443 与 18443)
+if command -v iptables >/dev/null 2>&1; then
+    for p in 443 18443; do
+        iptables -C INPUT -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || \
+        iptables -I INPUT 1 -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || true
+    done
+fi
+if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+    ufw allow 443/tcp comment aimilivpn >/dev/null 2>&1 || true
+    ufw allow 18443/tcp comment aimilivpn >/dev/null 2>&1 || true
+fi
+if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    firewall-cmd --permanent --add-port=443/tcp >/dev/null 2>&1 || true
+    firewall-cmd --permanent --add-port=18443/tcp >/dev/null 2>&1 || true
+    firewall-cmd --reload >/dev/null 2>&1 || true
+fi
+
+# 11. 更新全局控制台命令 'ml'
+if [ -f "$ROOT_DIR/aimili_cli.py" ]; then
+    cat > /usr/bin/ml <<'EOF'
+#!/usr/bin/env python3
+import sys
+sys.path.insert(0, "/opt/aimilivpn")
+try:
+    import aimili_cli
+    aimili_cli.main()
+except Exception as e:
+    sys.stderr.write(f"执行出错: {e}\n")
+    raise SystemExit(1)
+EOF
+    chmod +x /usr/bin/ml
+    echo -e "${GREEN}  -> 全局管理命令 'ml' 已升级支持双节点与订阅${PLAIN}"
+fi
+
 echo -e "\n${GREEN}Sing-box 双节点与订阅生成完成！${PLAIN}"
+
+# 12. 立即打印订阅详情卡片
+if [ -f "$ROOT_DIR/aimili_cli.py" ]; then
+    python3 "$ROOT_DIR/aimili_cli.py" sub
+fi

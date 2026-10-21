@@ -856,11 +856,15 @@ cat > /usr/bin/ml <<'EOF'
 import sys
 sys.path.insert(0, "/opt/aimilivpn")
 try:
-    import aimili_ml
+    import aimili_cli
+    aimili_cli.main()
 except ImportError:
-    sys.stderr.write("AimiliVPN 未安装或程序文件缺失（/opt/aimilivpn）。\n")
-    raise SystemExit(1)
-aimili_ml.main()
+    try:
+        import aimili_ml
+        aimili_ml.main()
+    except ImportError:
+        sys.stderr.write("AimiliVPN 未安装或程序文件缺失（/opt/aimilivpn）。\n")
+        raise SystemExit(1)
 EOF
 chmod +x /usr/bin/ml
 
@@ -1205,19 +1209,23 @@ aimili_print_summary() {
     echo -e "=========================================================="
     echo
     if [ -x /usr/local/bin/sing-box ] && [ -f "${INSTALL_DIR}/vpngate_data/singbox_nodes.json" ]; then
-        local sub_host="${AIMILIVPN_DOMAIN:-${PUBLIC_IP}}"
-        local direct_url resi_url
-        direct_url=$(python3 -c "import json; print(json.load(open('${INSTALL_DIR}/vpngate_data/singbox_nodes.json')).get('direct_url',''))" 2>/dev/null || echo "")
-        resi_url=$(python3 -c "import json; print(json.load(open('${INSTALL_DIR}/vpngate_data/singbox_nodes.json')).get('resi_url',''))" 2>/dev/null || echo "")
-        echo -e "${GREEN}             Sing-box 双节点分流服务已就绪！${PLAIN}"
-        echo -e "  * 核心状态:             ${GREEN}运行中 (端口 443 / VLESS Reality)${PLAIN}"
-        echo -e "  * HTTPS 订阅地址:       ${BLUE}https://${sub_host}:18443/sub.txt${PLAIN}"
-        echo -e "  * 备用订阅地址:         ${BLUE}https://${sub_host}:8443/sub/sub.txt${PLAIN}"
-        echo -e " --------------------------------------------------------"
-        echo -e "  * [节点 1: 原生直连]:   ${YELLOW}${direct_url}${PLAIN}"
-        echo -e "  * [节点 2: 住宅穿透]:   ${YELLOW}${resi_url}${PLAIN}"
-        echo -e "=========================================================="
-        echo
+        if [ -f "${INSTALL_DIR}/aimili_cli.py" ]; then
+            python3 "${INSTALL_DIR}/aimili_cli.py" sub
+        else
+            local sub_host="${AIMILIVPN_DOMAIN:-${PUBLIC_IP}}"
+            local direct_url resi_url
+            direct_url=$(python3 -c "import json; print(json.load(open('${INSTALL_DIR}/vpngate_data/singbox_nodes.json')).get('direct_url',''))" 2>/dev/null || echo "")
+            resi_url=$(python3 -c "import json; print(json.load(open('${INSTALL_DIR}/vpngate_data/singbox_nodes.json')).get('resi_url',''))" 2>/dev/null || echo "")
+            echo -e "${GREEN}             Sing-box 双节点分流服务已就绪！${PLAIN}"
+            echo -e "  * 核心状态:             ${GREEN}运行中 (端口 443 / VLESS Reality)${PLAIN}"
+            echo -e "  * HTTPS 订阅地址:       ${BLUE}https://${sub_host}:18443/sub.txt${PLAIN}"
+            echo -e "  * 备用订阅地址:         ${BLUE}https://${sub_host}:8443/sub/sub.txt${PLAIN}"
+            echo -e " --------------------------------------------------------"
+            echo -e "  * [节点 1: 原生直连]:   ${YELLOW}${direct_url}${PLAIN}"
+            echo -e "  * [节点 2: 住宅穿透]:   ${YELLOW}${resi_url}${PLAIN}"
+            echo -e "=========================================================="
+            echo
+        fi
     elif [ "${INSTALL_JIUHEYI:-}" = "y" ] || [ "${INSTALL_JIUHEYI:-}" = "Y" ]; then
         local jstat sub_port sub_host
         if [ -x /etc/v2ray-agent/xray/xray ] || [ -x /etc/v2ray-agent/sing-box/sing-box ]; then jstat="${GREEN}已安装${PLAIN}"; else jstat="${RED}未安装成功（见上方九合一输出）${PLAIN}"; fi

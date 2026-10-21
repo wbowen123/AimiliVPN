@@ -50,6 +50,23 @@ bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/insta
 - **Sing-box 统一订阅链接**（支持一键导入主流客户端）；
 - 两个节点的明文 `vless://` 分享链接。
 
+#### 常用管理命令
+
+系统提供全局快捷命令 `ml` 随时管理：
+```bash
+ml          # 启动全新交互式双核心管理控制台（支持查看节点、控制服务等）
+ml sub      # 随时在终端快速打印双节点链接与 HTTPS 订阅卡片
+ml status   # 查看 AimiliVPN 运行状态与当前活跃住宅节点
+ml logs     # 查看 AimiliVPN 实时拨号与隧道日志
+ml restart  # 重启 AimiliVPN 住宅网关
+ml singbox  # Sing-box 核心管理（start/stop/restart/logs/status）
+
+# 快速重新部署 Sing-box 核心或更新订阅
+bash /opt/aimilivpn/scripts/setup_singbox.sh
+# 快速查看订阅与节点
+bash /opt/aimilivpn/scripts/show_nodes.sh
+```
+
 #### 完全卸载
 
 ```bash
