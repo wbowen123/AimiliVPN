@@ -351,32 +351,69 @@ auto_detect_and_apply_warp() {
 
     echo ""
     echo -e "${C_GREEN}======================================================================${C_RESET}"
+    local recommended_action="off"
+    local recommended_desc=""
     if [[ ${#needed_geosites[@]} -eq 0 ]]; then
         # 全解锁场景 -> 自动放弃安装 WARP
+        recommended_action="off"
+        recommended_desc="自动免装 WARP (保持 100% 物理千兆直连)"
         echo -e "${C_BOLD}${C_GREEN}   🎉【自适应免装结论】当前 VPS 原生 IP 已 100% 完美解锁主流 AI 与流媒体！${C_RESET}"
         echo -e "${C_GREEN}======================================================================${C_RESET}"
         echo -e "  ✅ 状态报告: OpenAI/ChatGPT、Netflix、Disney+、TikTok 原生访问全部畅通！"
-        echo -e "  💡 智能自适应决策: ${C_BOLD}${C_GREEN}【自动放弃安装 WARP 出站】${C_RESET}"
+        echo -e "  💡 智能自适应推荐: ${C_BOLD}${C_GREEN}【自动放弃安装 WARP 出站】${C_RESET}"
         echo -e "  🚀 极速保障说明: 保持纯物理千兆直连，杜绝 WARP Anycast 额外的网络损耗与臃肿，"
         echo -e "                  享受 VPS 原汁原味的最低延迟与最高吞吐！"
         echo -e "${C_GREEN}======================================================================${C_RESET}"
-        apply_warp_to_singbox "off"
-        return 0
     else
         # 部分受阻场景 -> 精准针对性分流
         local site_list
         site_list=$(IFS=,; echo "${needed_geosites[*]}")
+        recommended_action="custom:${site_list}"
+        recommended_desc="精准打补丁 (仅为 ${locked_names[*]} 启用 WARP，已解锁平台保持千兆直连)"
         echo -e "${C_BOLD}${C_YELLOW}   ⚠️【自适应精准分流结论】当前 VPS 原生 IP 存在部分流媒体/AI 受阻！${C_RESET}"
         echo -e "${C_GREEN}======================================================================${C_RESET}"
         echo -e "  * ${C_GREEN}已解锁平台 (继续走 VPS 原生物理千兆直连):${C_RESET} ${unlocked_names[*]:-无（全部需WARP接管）}"
         echo -e "  * ${C_YELLOW}受阻断平台 (已自动接入 WARP 虚拟出口解锁):${C_RESET} ${locked_names[*]}"
-        echo -e "  💡 智能自适应决策: ${C_BOLD}${C_GREEN}【精准接管受阻服务，已解锁服务绝不减速】${C_RESET}"
+        echo -e "  💡 智能自适应推荐: ${C_BOLD}${C_GREEN}【精准接管受阻服务，已解锁服务绝不减速】${C_RESET}"
         echo -e "  🛡️ 安全红线声明: WARP 仅对【直连节点】的受阻域名生效；"
         echo -e "                  ${C_BOLD}${C_GREEN}Aimili 住宅家宽节点 100% 保持纯洁家宽出口，绝不走任何 WARP${C_RESET}！"
         echo -e "${C_GREEN}======================================================================${C_RESET}"
-        apply_warp_to_singbox "custom:${site_list}"
-        return 0
     fi
+
+    local user_warp_choice="1"
+    if [ -t 0 ]; then
+        echo ""
+        echo -e "${C_BOLD}【请确认 Cloudflare WARP 出站分流策略】:${C_RESET}"
+        echo -e "  ${C_GREEN}[1]${C_RESET} 遵照智能自适应推荐: ${C_BOLD}${C_GREEN}${recommended_desc}${C_RESET} [推荐，直接回车]"
+        echo -e "  ${C_GREEN}[2]${C_RESET} 强制开启智能流媒体分流 (所有主流流媒体与 AI 服务均走 WARP)"
+        echo -e "  ${C_GREEN}[3]${C_RESET} 自选特定平台组合走 WARP (手动勾选 OpenAI/Netflix/Disney+/TikTok/YouTube)"
+        echo -e "  ${C_GREEN}[4]${C_RESET} 坚决关闭 WARP 出站 (全平台 100% 保持纯物理 VPS 直连)"
+        echo -e "  ${C_GREEN}[5]${C_RESET} 跳转进入 WARP 完整管理二级菜单进行高级微调"
+        read -rp "请选择 [1-5，默认 1]: " user_warp_choice
+        user_warp_choice="${user_warp_choice:-1}"
+    fi
+
+    case "${user_warp_choice}" in
+        1)
+            apply_warp_to_singbox "${recommended_action}"
+            ;;
+        2)
+            apply_warp_to_singbox "stream"
+            ;;
+        3)
+            custom_warp_selection
+            ;;
+        4)
+            apply_warp_to_singbox "off"
+            ;;
+        5)
+            menu
+            ;;
+        *)
+            apply_warp_to_singbox "${recommended_action}"
+            ;;
+    esac
+    return 0
 }
 
 check_unlock_status() {

@@ -355,4 +355,4 @@ Subscription links available on `https://your-domain-or-ip:18443/`:
 
 ---
 
-**Version: V1.4.4 (Sing-box Dual-Outbound Enterprise Full-Stack Suite)**
+**Version: V1.4.5 (Sing-box Dual-Outbound Enterprise Full-Stack Suite)**

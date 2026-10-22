@@ -568,13 +568,17 @@ fi
 if [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -t 0 ]; then
     if [ "${INSTALL_SINGBOX}" = "y" ] || [ "${INSTALL_SUB}" = "y" ]; then
         if [ -z "${AIMILIVPN_DOMAIN+x}" ]; then
-            read -r -p "请输入域名（已解析到本机，可配真实证书和小黄云破墙），没有就直接回车使用纯 IP: " AIMILIVPN_DOMAIN
+            echo -e "\n${BOLD}${BLUE}【SSL/TLS 访问证书与域名绑定说明】${PLAIN}"
+            echo -e "  * ${GREEN}有域名${PLAIN}: 输入已解析到本机的域名，系统将自动申请官方 Let's Encrypt / ZeroSSL 证书并配置自动续期；"
+            echo -e "  * ${YELLOW}无域名${PLAIN}: 直接回车，系统将自动签发 10 年免维护 IP ECC 专属证书（支持纯 IP 订阅与管理，后续可随时 ml cert 补绑）；"
+            read -r -p "请输入您的域名 [没有请直接按回车使用纯 IP 证书]: " AIMILIVPN_DOMAIN
         fi
         AIMILIVPN_DOMAIN=$(printf '%s' "${AIMILIVPN_DOMAIN:-}" | tr -d '[:space:]')
     fi
     if [ "${INSTALL_SINGBOX}" = "y" ]; then
         if [ -z "${SINGBOX_CAMOUFLAGE}" ]; then
-            read -r -p "请输入 Reality 伪装域名 [直接回车自动本地测速优选]: " SINGBOX_CAMOUFLAGE
+            echo -e "\n${BOLD}${BLUE}【VLESS-Reality 极速直连伪装目标】${PLAIN}"
+            read -r -p "请输入 Reality 伪装域名 [直接按回车由系统自动执行延迟优选]: " SINGBOX_CAMOUFLAGE
             SINGBOX_CAMOUFLAGE=$(printf '%s' "${SINGBOX_CAMOUFLAGE}" | tr -d '[:space:]')
         fi
     fi

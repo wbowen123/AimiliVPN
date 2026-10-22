@@ -110,6 +110,7 @@ run_speedtest() {
 
     local rank=1
     local best_ip=""
+    local ranked_ips=()
     while IFS= read -r line; do
         local ms
         ms=$(echo "${line}" | awk '{print $1}')
@@ -119,6 +120,7 @@ run_speedtest() {
         if [[ -z "${best_ip}" ]]; then
             best_ip="${ip}"
         fi
+        ranked_ips+=("${ip}")
 
         local isp="三网通用"
         if [[ "${ip}" =~ ^104\.1[67] ]]; then
@@ -136,12 +138,58 @@ run_speedtest() {
         fi
     done <<< "${sorted_results}"
 
+    echo "----------------------------------------------------------------------"
     echo -e "🏆 综合测速最高得分最优 IP: ${C_BOLD}${C_GREEN}${best_ip}${C_RESET}"
-    echo "${best_ip}" > "${CF_IP_FILE}"
-    log_info "已将最优 IP [${best_ip}] 保存至 ${CF_IP_FILE}"
+    echo ""
+    echo -e "${C_BOLD}【请选择优选 Anycast IP 套用方式】:${C_RESET}"
+    echo -e "  ${C_GREEN}[1]${C_RESET} 自动套用排名 No.1 综合最优 IP (${C_BOLD}${C_GREEN}${best_ip}${C_RESET}) [推荐，直接回车]"
+    echo -e "  ${C_GREEN}[2]${C_RESET} 从上方列表中自选排名序号套用 (例如输入 2 或 3)"
+    echo -e "  ${C_GREEN}[3]${C_RESET} 手动输入自定义 Anycast IP (如 104.16.160.10)"
+    echo -e "  ${C_GREEN}[4]${C_RESET} 仅查看测速结果，不修改当前配置"
+
+    local apply_choice
+    read -rp "请选择 [1-4，默认 1]: " apply_choice
+    apply_choice="${apply_choice:-1}"
+
+    local chosen_ip=""
+    case "${apply_choice}" in
+        1)
+            chosen_ip="${best_ip}"
+            ;;
+        2)
+            read -rp "请输入要套用的排名序号 [1-${#ranked_ips[@]}]: " pick_num
+            pick_num="${pick_num:-1}"
+            if [[ "$pick_num" =~ ^[0-9]+$ ]] && [[ "$pick_num" -ge 1 ]] && [[ "$pick_num" -le "${#ranked_ips[@]}" ]]; then
+                chosen_ip="${ranked_ips[$((pick_num - 1))]}"
+            else
+                log_warn "序号无效，默认使用 No.1 最优 IP: ${best_ip}"
+                chosen_ip="${best_ip}"
+            fi
+            ;;
+        3)
+            read -rp "请输入自定义 Anycast IP (例如 104.16.160.10): " custom_ip
+            custom_ip=$(echo "${custom_ip}" | tr -d '[:space:]')
+            if [[ -n "${custom_ip}" ]]; then
+                chosen_ip="${custom_ip}"
+            else
+                log_warn "输入为空，默认使用 No.1 最优 IP: ${best_ip}"
+                chosen_ip="${best_ip}"
+            fi
+            ;;
+        4)
+            echo -e "${C_BLUE}已取消套用，保留现有配置不变。${C_RESET}"
+            return 0
+            ;;
+        *)
+            chosen_ip="${best_ip}"
+            ;;
+    esac
+
+    echo "${chosen_ip}" > "${CF_IP_FILE}"
+    log_info "已成功将优选 IP [${chosen_ip}] 保存至 ${CF_IP_FILE}"
     echo ""
     echo -e "  ${C_BOLD}【优选 Anycast IP 作用范围与目标节点清单】${C_RESET}"
-    echo -e "  ${C_GREEN}● 生效节点 (自动替换连接地址为优选IP):${C_RESET}"
+    echo -e "  ${C_GREEN}● 生效节点 (客户端连接地址自动替换为 ${chosen_ip}):${C_RESET}"
     echo -e "    1. ⛅ [CDN-优选IP·IPv4] VMess-WS-Argo【Anycast优选·Cloudflare全球破墙】"
     echo -e "    2. ⛅ [CDN-小黄云·IPv4] VMess-xHTTP【Cloudflare-CDN·分块免流破墙】"
     echo -e "    3. ⛅ [CDN-小黄云·IPv4] VLESS-WS-TLS【Cloudflare-CDN·小黄云破墙】"
@@ -149,6 +197,17 @@ run_speedtest() {
     echo -e "    - 所有 🚀 [直连-极速] 节点 (Reality, Hy2, TUIC, AnyTLS, xHTTP-直连)"
     echo -e "    - 所有 🏠 [住宅-家宽] 节点 (直连入站 + Aimili 动态家宽出口)"
     echo -e "${C_GREEN}======================================================================${C_RESET}"
+
+    # 询问是否立即刷新 Sing-box 订阅
+    read -rp "是否立即重新生成订阅节点以应用新的优选 IP？[Y/n]: " reload_sub
+    reload_sub=$(echo "${reload_sub:-y}" | tr '[:upper:]' '[:lower:]')
+    if [[ "$reload_sub" != "n" ]]; then
+        if [[ -f "${INSTALL_DIR}/scripts/setup_singbox.sh" ]]; then
+            log_info "正在刷新 Sing-box 订阅..."
+            bash "${INSTALL_DIR}/scripts/setup_singbox.sh" >/dev/null 2>&1 || true
+            log_info "订阅已更新完成！"
+        fi
+    fi
 }
 
 show_dns_guide() {
