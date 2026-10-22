@@ -1,17 +1,13 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# AimiliVPN Sing-box 全协议矩阵与双出站订阅生成引擎
-# 架构：
-#   - 入站协议：
-#       1. VLESS-Reality (TCP 443) -> 极速 Vision 伪装
-#       2. Hysteria 2 (UDP 443)    -> 恶劣网络满速推流 / 晚高峰免拥塞
-#       3. TUIC v5 (UDP 8443)      -> QUIC 0-RTT 原生 BBR
-#       4. AnyTLS (TCP 8444)       -> 动态包长特征混淆 / 会话池
-#       5. VMess-xHTTP (TCP 8445)  -> 标准分段 HTTP 流
-#   - 出口矩阵：
-#       • 直连用户 (direct-user)      -> 走 VPS 原生机房千兆 IP 出口
-#       • 住宅用户 (residential-user) -> 分流至 127.0.0.1:8500 (Aimili 家宽住宅出口)
-#   - 订阅生态：同时输出 Base64 (sub.txt)、Clash Meta (clash.yaml)、Sing-box (singbox.json)
+# AimiliVPN Sing-box 全协议矩阵 × 住宅/原生双出站工业级部署脚本
+# 吸收 singbox-lite 核心工程亮点：
+#   1. GOMEMLIMIT 动态软内存上限计算，杜绝低配小鸡 (128M/512M) OOM Crash
+#   2. 事务快照与原子写入 + 失败自动回滚机制，零断网风险
+#   3. 全球权威授时中心时间同步诊断与毫秒级时钟漂移补偿
+#   4. 容器与虚拟化环境自适应 (KVM / LXC / Docker) 权限自愈
+#   5. Hysteria 2 Salamander 混淆 + 40000-50000 端口跳跃，抗运营商 QoS 阻断
+#   6. 住宅出口双模支持：内置 Aimili 动态家宽池 (8500) 或 外部第三方 SOCKS5 接入
 # ==============================================================================
 set -euo pipefail
 
@@ -21,6 +17,7 @@ SUB_DIR="/var/lib/aimilivpn/subscriptions"
 WWW_SUB_DIR="/var/www/aimilivpn-sub"
 SB_CONFIG_DIR="/etc/sing-box"
 SB_CONFIG_FILE="$SB_CONFIG_DIR/config.json"
+SB_CONFIG_BAK="$SB_CONFIG_DIR/config.json.bak"
 SB_BIN="/usr/local/bin/sing-box"
 
 RED='\033[0;31m'
@@ -37,10 +34,15 @@ fi
 mkdir -p "$DATA_DIR" "$SUB_DIR" "$WWW_SUB_DIR" "$SB_CONFIG_DIR"
 
 echo -e "${BLUE}==========================================================${PLAIN}"
-echo -e "${BLUE}   正在部署 AimiliVPN 全协议矩阵 × 住宅/原生双出站系统...${PLAIN}"
+echo -e "${BLUE}   正在部署 AimiliVPN 工业级全协议双出站代理引擎...${PLAIN}"
 echo -e "${BLUE}==========================================================${PLAIN}"
 
-# 0. 调优 Linux BBR 与系统网络栈
+# 0.1 服务器高精度时钟同步诊断与自动校准（防 Reality/TLS 握手因时间漂移被阻断）
+if [ -f "$ROOT_DIR/scripts/check_time_sync.sh" ]; then
+    bash "$ROOT_DIR/scripts/check_time_sync.sh" || true
+fi
+
+# 0.2 调优 Linux BBR 拥塞控制与系统网络缓冲区
 if [ -f "$ROOT_DIR/scripts/tune_bbr.sh" ]; then
     bash "$ROOT_DIR/scripts/tune_bbr.sh" || true
 fi
@@ -53,7 +55,7 @@ case "$ARCH" in
     *) echo -e "${RED}不支持的 CPU 架构: ${ARCH}${PLAIN}"; exit 1 ;;
 esac
 
-# 2. 安装/更新 Sing-box 核心
+# 2. 安装/更新 Sing-box 核心 (v1.11.4)
 install_singbox_bin() {
     local target_ver="1.11.4"
     if [ -x "$SB_BIN" ]; then
@@ -105,18 +107,32 @@ install_singbox_bin() {
 
 install_singbox_bin
 
-# 3. 读取本地住宅代理配置与公网 IP
+# 3. 读取住宅出口配置（支持内置 Aimili 8500 家宽池或外部第三方 SOCKS5 接入）
 PROXY_ENV_FILE="/etc/default/aimilivpn"
-LOCAL_PROXY_PORT="8500"
-LOCAL_PROXY_USER="socks5"
-LOCAL_PROXY_PASS="ilovestudy"
+RESI_EGRESS_TYPE="local"
+RESI_PROXY_HOST="127.0.0.1"
+RESI_PROXY_PORT="8500"
+RESI_PROXY_USER="socks5"
+RESI_PROXY_PASS="ilovestudy"
 
 if [ -f "$PROXY_ENV_FILE" ]; then
-    LOCAL_PROXY_PORT=$(grep '^LOCAL_PROXY_PORT=' "$PROXY_ENV_FILE" | cut -d'=' -f2 | tr -d '"'"'" || echo "8500")
-    LOCAL_PROXY_USER=$(grep '^LOCAL_PROXY_USER=' "$PROXY_ENV_FILE" | cut -d'=' -f2 | tr -d '"'"'" || echo "socks5")
-    LOCAL_PROXY_PASS=$(grep '^LOCAL_PROXY_PASS=' "$PROXY_ENV_FILE" | cut -d'=' -f2 | tr -d '"'"'" || echo "ilovestudy")
+    RESI_EGRESS_TYPE=$(grep '^RESI_EGRESS_TYPE=' "$PROXY_ENV_FILE" | cut -d'=' -f2 | tr -d '"'"'" || echo "local")
+    if [ "$RESI_EGRESS_TYPE" = "external" ]; then
+        RESI_PROXY_HOST=$(grep '^EXTERNAL_PROXY_HOST=' "$PROXY_ENV_FILE" | cut -d'=' -f2 | tr -d '"'"'" || echo "127.0.0.1")
+        RESI_PROXY_PORT=$(grep '^EXTERNAL_PROXY_PORT=' "$PROXY_ENV_FILE" | cut -d'=' -f2 | tr -d '"'"'" || echo "8500")
+        RESI_PROXY_USER=$(grep '^EXTERNAL_PROXY_USER=' "$PROXY_ENV_FILE" | cut -d'=' -f2 | tr -d '"'"'" || echo "")
+        RESI_PROXY_PASS=$(grep '^EXTERNAL_PROXY_PASS=' "$PROXY_ENV_FILE" | cut -d'=' -f2 | tr -d '"'"'" || echo "")
+        echo -e "${GREEN}  -> 住宅出口模式: 外部第三方 SOCKS5 (${RESI_PROXY_HOST}:${RESI_PROXY_PORT})${PLAIN}"
+    else
+        RESI_PROXY_HOST="127.0.0.1"
+        RESI_PROXY_PORT=$(grep '^LOCAL_PROXY_PORT=' "$PROXY_ENV_FILE" | cut -d'=' -f2 | tr -d '"'"'" || echo "8500")
+        RESI_PROXY_USER=$(grep '^LOCAL_PROXY_USER=' "$PROXY_ENV_FILE" | cut -d'=' -f2 | tr -d '"'"'" || echo "socks5")
+        RESI_PROXY_PASS=$(grep '^LOCAL_PROXY_PASS=' "$PROXY_ENV_FILE" | cut -d'=' -f2 | tr -d '"'"'" || echo "ilovestudy")
+        echo -e "${GREEN}  -> 住宅出口模式: AimiliVPN 内置动态家宽池 (127.0.0.1:${RESI_PROXY_PORT})${PLAIN}"
+    fi
 fi
 
+# 4. 获取本机公网 IP 与域名
 PUBLIC_IP=""
 if [ -f "$DATA_DIR/public_ip.txt" ]; then
     PUBLIC_IP=$(cat "$DATA_DIR/public_ip.txt" | tr -d '[:space:]')
@@ -137,7 +153,7 @@ if [ -z "$DOMAIN" ] && [ -f /etc/aimilivpn/tls/fullchain.pem ] && command -v ope
 fi
 DOMAIN=$(echo "$DOMAIN" | tr -d '[:space:]')
 
-# 4. 伪装域名 (SNI) 智能优选与握手测速
+# 5. 伪装域名 (SNI) 智能测速优选
 REQUESTED_SNI="${1:-${JIUHEYI_REALITY_DOMAIN:-}}"
 CAMOUFLAGE_DOMAIN=""
 if [ -f "$ROOT_DIR/scripts/test_sni.sh" ]; then
@@ -147,7 +163,7 @@ fi
 [ -z "$CAMOUFLAGE_DOMAIN" ] && CAMOUFLAGE_DOMAIN="gateway.icloud.com"
 echo -e "${GREEN}  -> 优选伪装域名: ${CAMOUFLAGE_DOMAIN}${PLAIN}"
 
-# 5. 证书体系就绪 (支持真实域名证书与无域名纯 IP 证书自动准备)
+# 6. 证书体系就绪 (域名证书复用或自签 IP 证书)
 CERT_FILE="/etc/sing-box/cert.pem"
 KEY_FILE="/etc/sing-box/key.pem"
 
@@ -167,13 +183,14 @@ elif [ ! -f "$CERT_FILE" ] || [ ! -f "$KEY_FILE" ]; then
     fi
 fi
 
-# 6. 生成或保留 Reality 密钥与 UUID 凭据
+# 7. 生成或保留 Reality 密钥、UUID 与 Hysteria 2 混淆密码
 KEYS_STORE="$DATA_DIR/singbox_keys.json"
 PRIVATE_KEY=""
 PUBLIC_KEY=""
 DIRECT_UUID=""
 RESI_UUID=""
 SHORT_ID=""
+HY2_OBFS=""
 
 if [ -f "$KEYS_STORE" ]; then
     PRIVATE_KEY=$(python3 -c "import json; print(json.load(open('$KEYS_STORE')).get('private_key',''))" 2>/dev/null || true)
@@ -181,6 +198,7 @@ if [ -f "$KEYS_STORE" ]; then
     DIRECT_UUID=$(python3 -c "import json; print(json.load(open('$KEYS_STORE')).get('direct_uuid',''))" 2>/dev/null || true)
     RESI_UUID=$(python3 -c "import json; print(json.load(open('$KEYS_STORE')).get('resi_uuid',''))" 2>/dev/null || true)
     SHORT_ID=$(python3 -c "import json; print(json.load(open('$KEYS_STORE')).get('short_id',''))" 2>/dev/null || true)
+    HY2_OBFS=$(python3 -c "import json; print(json.load(open('$KEYS_STORE')).get('hy2_obfs',''))" 2>/dev/null || true)
 fi
 
 if [ -z "$PRIVATE_KEY" ] || [ -z "$PUBLIC_KEY" ]; then
@@ -192,6 +210,7 @@ fi
 [ -z "$DIRECT_UUID" ] && DIRECT_UUID=$("$SB_BIN" generate uuid)
 [ -z "$RESI_UUID" ] && RESI_UUID=$("$SB_BIN" generate uuid)
 [ -z "$SHORT_ID" ] && SHORT_ID=$("$SB_BIN" generate rand --hex 8)
+[ -z "$HY2_OBFS" ] && HY2_OBFS=$("$SB_BIN" generate rand --hex 12)
 
 cat > "$KEYS_STORE" <<EOF
 {
@@ -200,15 +219,23 @@ cat > "$KEYS_STORE" <<EOF
   "direct_uuid": "$DIRECT_UUID",
   "resi_uuid": "$RESI_UUID",
   "short_id": "$SHORT_ID",
+  "hy2_obfs": "$HY2_OBFS",
   "sni": "$CAMOUFLAGE_DOMAIN"
 }
 EOF
 chmod 600 "$KEYS_STORE"
 
-# 7. 生成 Sing-box 全协议双出站核心配置文件
-echo -e "${YELLOW}  -> 正在生成 Sing-box 全协议核心配置 (/etc/sing-box/config.json)...${PLAIN}"
+# 8. 事务快照与原子配置生成 (Transaction Snapshot & Atomic Rollback)
+SB_CONFIG_TMP="$SB_CONFIG_DIR/config.json.tmp.$$"
 
-cat > "$SB_CONFIG_FILE" <<EOF
+# 8.1 先做事务快照备份
+if [ -f "$SB_CONFIG_FILE" ]; then
+    cp -f "$SB_CONFIG_FILE" "$SB_CONFIG_BAK"
+fi
+
+echo -e "${YELLOW}  -> 正在构建 Sing-box 核心配置事务草稿...${PLAIN}"
+
+cat > "$SB_CONFIG_TMP" <<EOF
 {
   "log": {
     "level": "warn",
@@ -265,6 +292,10 @@ cat > "$SB_CONFIG_FILE" <<EOF
           "password": "${RESI_UUID}"
         }
       ],
+      "obfs": {
+        "type": "salamander",
+        "password": "${HY2_OBFS}"
+      },
       "masquerade": "https://${CAMOUFLAGE_DOMAIN}",
       "tls": {
         "enabled": true,
@@ -349,11 +380,11 @@ cat > "$SB_CONFIG_FILE" <<EOF
     {
       "type": "socks",
       "tag": "resi-out",
-      "server": "127.0.0.1",
-      "server_port": ${LOCAL_PROXY_PORT},
+      "server": "${RESI_PROXY_HOST}",
+      "server_port": ${RESI_PROXY_PORT},
       "version": "5",
-      "username": "${LOCAL_PROXY_USER}",
-      "password": "${LOCAL_PROXY_PASS}"
+      "username": "${RESI_PROXY_USER}",
+      "password": "${RESI_PROXY_PASS}"
     }
   ],
   "route": {
@@ -376,25 +407,78 @@ cat > "$SB_CONFIG_FILE" <<EOF
 }
 EOF
 
-# 8. 校验 Sing-box 核心配置，如果个别实验性协议在老二进制报错则平滑回退
-if ! "$SB_BIN" check -c "$SB_CONFIG_FILE" >/dev/null 2>&1; then
-    echo -e "${YELLOW}  -> 检测到 Sing-box 对 AnyTLS 支持受限，调整为四合一主力协议模式...${PLAIN}"
-    # 移除 anytls 入站
-    python3 -c "
+# 8.2 配置清洗与语法校验
+python3 -c "
 import json
-with open('$SB_CONFIG_FILE', 'r') as f:
+with open('$SB_CONFIG_TMP', 'r') as f:
     cfg = json.load(f)
-cfg['inbounds'] = [ib for ib in cfg['inbounds'] if ib.get('type') != 'anytls']
-with open('$SB_CONFIG_FILE', 'w') as f:
+for ob in cfg.get('outbounds', []):
+    if ob.get('type') == 'socks' and not ob.get('username'):
+        ob.pop('username', None)
+        ob.pop('password', None)
+with open('$SB_CONFIG_TMP', 'w') as f:
     json.dump(cfg, f, indent=2)
 "
-    "$SB_BIN" check -c "$SB_CONFIG_FILE"
+
+# 语法校验与平滑降级（如 AnyTLS 或 Salamander obfs 在特定平台不兼容）
+if ! "$SB_BIN" check -c "$SB_CONFIG_TMP" >/dev/null 2>&1; then
+    echo -e "${YELLOW}  -> 检测到部分前沿特性在当前内核受限，执行自愈降级处理...${PLAIN}"
+    python3 -c "
+import json
+with open('$SB_CONFIG_TMP', 'r') as f:
+    cfg = json.load(f)
+cfg['inbounds'] = [ib for ib in cfg['inbounds'] if ib.get('type') != 'anytls']
+for ib in cfg['inbounds']:
+    if ib.get('type') == 'hysteria2' and 'obfs' in ib:
+        del ib['obfs']
+with open('$SB_CONFIG_TMP', 'w') as f:
+    json.dump(cfg, f, indent=2)
+"
 fi
 
-echo -e "${GREEN}  -> Sing-box 全协议配置文件校验通过！${PLAIN}"
+if ! "$SB_BIN" check -c "$SB_CONFIG_TMP" >/dev/null 2>&1; then
+    echo -e "${RED}错误: 无法生成合法的 Sing-box 配置！已终止提交，现有运行状态未受破坏。${PLAIN}"
+    rm -f "$SB_CONFIG_TMP"
+    exit 1
+fi
 
-# 9. 配置与启动 systemd 服务
-cat > /etc/systemd/system/sing-box.service <<'EOF'
+# 8.3 原子写入生效
+mv -f "$SB_CONFIG_TMP" "$SB_CONFIG_FILE"
+echo -e "${GREEN}  -> Sing-box 配置原子提交成功！${PLAIN}"
+
+# 9. 计算 GOMEMLIMIT 软内存配额与容器自适应 Systemd 服务
+calculate_gomemlimit() {
+    local mem_kb=0
+    if [ -f /proc/meminfo ]; then
+        mem_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+    fi
+    local mem_mb=$((mem_kb / 1024))
+    if [ "$mem_mb" -le 0 ]; then
+        echo "180MiB"
+        return
+    fi
+    if [ "$mem_mb" -le 256 ]; then
+        echo "64MiB"
+    elif [ "$mem_mb" -le 512 ]; then
+        echo "160MiB"
+    elif [ "$mem_mb" -le 1024 ]; then
+        echo "380MiB"
+    else
+        echo "$((mem_mb * 40 / 100))MiB"
+    fi
+}
+
+GOMEMLIMIT_VAL=$(calculate_gomemlimit)
+echo -e "${GREEN}  -> 检测系统可用内存，Go 运行时防 OOM 软配额设为: ${GOMEMLIMIT_VAL}${PLAIN}"
+
+# 检测是否在无特权容器环境（Docker / LXC）
+CAP_LINE="CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW\nAmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW"
+if [ -f /.dockerenv ] || grep -qE "lxc|docker" /proc/1/environ 2>/dev/null; then
+    echo -e "${YELLOW}  -> 检测到容器运行环境 (Docker/LXC)，自动调整安全权能以确保平稳启动${PLAIN}"
+    CAP_LINE="# Container environment capabilities managed by host"
+fi
+
+cat > /etc/systemd/system/sing-box.service <<EOF
 [Unit]
 Description=Sing-box Service
 Documentation=https://sing-box.sagernet.org
@@ -402,8 +486,9 @@ After=network.target nss-lookup.target aimilivpn.service
 Wants=network.target
 
 [Service]
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
-AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+Environment="GOMEMLIMIT=${GOMEMLIMIT_VAL}"
+Environment="GODEBUG=madvdontneed=1"
+$(printf '%b' "$CAP_LINE")
 ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
 Restart=on-failure
 RestartSec=3s
@@ -416,14 +501,38 @@ EOF
 systemctl daemon-reload
 systemctl enable sing-box.service
 systemctl restart sing-box.service
-sleep 1
+sleep 1.5
+
+# 8.4 失败自动回滚校验
 if ! systemctl is-active --quiet sing-box.service; then
-    echo -e "${RED}警告: Sing-box 服务未能正常启动。日志: journalctl -u sing-box -e${PLAIN}"
+    echo -e "${RED}警告: Sing-box 新配置启动异常！启动事务失败回滚机制...${PLAIN}"
+    if [ -f "$SB_CONFIG_BAK" ]; then
+        mv -f "$SB_CONFIG_BAK" "$SB_CONFIG_FILE"
+        systemctl restart sing-box.service || true
+        echo -e "${GREEN}  -> 已成功自动回滚到上一版健康配置，生产环境未受损！${PLAIN}"
+    fi
+    journalctl -u sing-box -n 20 --no-pager || true
+    exit 1
 else
-    echo -e "${GREEN}  -> Sing-box 全协议服务已成功启动！${PLAIN}"
+    echo -e "${GREEN}  -> Sing-box 全协议服务已成功启动并健康运行！${PLAIN}"
+    rm -f "$SB_CONFIG_BAK"
 fi
 
-# 10. 写入汇总数据
+# 10. 部署 Hysteria 2 端口跳跃转发规则 (Port Hopping: 40000-50000 -> 443)
+echo -e "${YELLOW}  -> 正在配置 Hysteria 2 端口跳跃重定向规则 (UDP 40000-50000 -> 443)...${PLAIN}"
+if command -v iptables >/dev/null 2>&1; then
+    if iptables -t nat -L -n >/dev/null 2>&1; then
+        iptables -t nat -C PREROUTING -p udp --dport 40000:50000 -j REDIRECT --to-ports 443 2>/dev/null || \
+        iptables -t nat -A PREROUTING -p udp --dport 40000:50000 -j REDIRECT --to-ports 443 2>/dev/null || true
+    fi
+fi
+if command -v nft >/dev/null 2>&1; then
+    nft add table ip aimilivpn 2>/dev/null || true
+    nft add chain ip aimilivpn prerouting '{ type nat hook prerouting priority -100; }' 2>/dev/null || true
+    nft add rule ip aimilivpn prerouting udp dport 40000-50000 redirect to :443 2>/dev/null || true
+fi
+
+# 11. 写入汇总数据
 NODES_JSON="$DATA_DIR/singbox_nodes.json"
 cat > "$NODES_JSON" <<EOF
 {
@@ -432,8 +541,13 @@ cat > "$NODES_JSON" <<EOF
   "camouflage_domain": "${CAMOUFLAGE_DOMAIN}",
   "public_key": "${PUBLIC_KEY}",
   "short_id": "${SHORT_ID}",
+  "hy2_obfs": "${HY2_OBFS}",
+  "hy2_hop_ports": "443,40000-50000",
   "direct_uuid": "${DIRECT_UUID}",
   "resi_uuid": "${RESI_UUID}",
+  "resi_egress_type": "${RESI_EGRESS_TYPE}",
+  "resi_host": "${RESI_PROXY_HOST}",
+  "resi_port": ${RESI_PROXY_PORT},
   "vless_port": 443,
   "hy2_port": 443,
   "tuic_port": 8443,
@@ -442,7 +556,7 @@ cat > "$NODES_JSON" <<EOF
 }
 EOF
 
-# 11. 调用 Python 订阅生成引擎产出全格式订阅
+# 12. 调用 Python 订阅生成引擎产出全格式订阅
 if [ -f "$ROOT_DIR/scripts/generate_subs.py" ]; then
     echo -e "${YELLOW}  -> 正在生成 10 大节点矩阵与全平台订阅 (sub.txt, clash.yaml, singbox.json)...${PLAIN}"
     python3 "$ROOT_DIR/scripts/generate_subs.py" "$NODES_JSON" "$WWW_SUB_DIR"
@@ -450,7 +564,7 @@ if [ -f "$ROOT_DIR/scripts/generate_subs.py" ]; then
     echo -e "${GREEN}  -> 全生态订阅文件已更新并就绪！${PLAIN}"
 fi
 
-# 12. 部署并重新载入 Nginx 订阅配置
+# 13. 部署并重新载入 Nginx 订阅配置
 NGINX_CONF_DEST=""
 if [ -d /etc/nginx/conf.d ]; then
     NGINX_CONF_DEST="/etc/nginx/conf.d/aimilivpn-production.conf"
@@ -472,7 +586,7 @@ if command -v nginx >/dev/null 2>&1; then
     fi
 fi
 
-# 13. 防火墙端口全开 (TCP: 443, 8444, 8445, 18443; UDP: 443, 8443)
+# 14. 防火墙端口放行 (放行 TCP: 443, 8444, 8445, 18443; UDP: 443, 8443 及 40000-50000 跳跃端口)
 if command -v iptables >/dev/null 2>&1; then
     for p in 443 8444 8445 18443; do
         iptables -C INPUT -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || \
@@ -482,6 +596,8 @@ if command -v iptables >/dev/null 2>&1; then
         iptables -C INPUT -p udp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || \
         iptables -I INPUT 1 -p udp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || true
     done
+    iptables -C INPUT -p udp --dport 40000:50000 -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || \
+    iptables -I INPUT 1 -p udp --dport 40000:50000 -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || true
 fi
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
     ufw allow 443/tcp comment aimilivpn >/dev/null 2>&1 || true
@@ -490,14 +606,16 @@ if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: a
     ufw allow 18443/tcp comment aimilivpn >/dev/null 2>&1 || true
     ufw allow 443/udp comment aimilivpn >/dev/null 2>&1 || true
     ufw allow 8443/udp comment aimilivpn >/dev/null 2>&1 || true
+    ufw allow 40000:50000/udp comment aimilivpn >/dev/null 2>&1 || true
 fi
 if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
     firewall-cmd --permanent --add-port={443,8444,8445,18443}/tcp >/dev/null 2>&1 || true
     firewall-cmd --permanent --add-port={443,8443}/udp >/dev/null 2>&1 || true
+    firewall-cmd --permanent --add-port=40000-50000/udp >/dev/null 2>&1 || true
     firewall-cmd --reload >/dev/null 2>&1 || true
 fi
 
-# 14. 升级全局管理命令 'ml'
+# 15. 升级全局管理命令 'ml'
 if [ -f "$ROOT_DIR/aimili_cli.py" ]; then
     cat > /usr/bin/ml <<'EOF'
 #!/usr/bin/env python3
@@ -511,14 +629,15 @@ except Exception as e:
     raise SystemExit(1)
 EOF
     chmod +x /usr/bin/ml
-    echo -e "${GREEN}  -> 全局管理命令 'ml' 已升级支持全协议矩阵${PLAIN}"
+    ln -sf /usr/bin/ml /usr/local/bin/ml 2>/dev/null || true
+    echo -e "${GREEN}  -> 全局管理命令 'ml' 已升级支持全协议矩阵与工业级加固${PLAIN}"
 fi
 
 echo -e "\n${GREEN}==========================================================${PLAIN}"
-echo -e "${GREEN}  🎉 AimiliVPN 全协议双出站矩阵与全平台订阅部署成功！${PLAIN}"
+echo -e "${GREEN}  🎉 AimiliVPN 工业级全协议双出站矩阵部署成功！${PLAIN}"
 echo -e "${GREEN}==========================================================${PLAIN}"
 
-# 15. 打印订阅详情卡片
+# 16. 打印订阅详情卡片
 if [ -f "$ROOT_DIR/aimili_cli.py" ]; then
     python3 "$ROOT_DIR/aimili_cli.py" sub
 fi

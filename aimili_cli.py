@@ -122,6 +122,11 @@ def get_subscription_data():
         "all_links": all_links,
         "direct_links": direct_links,
         "resi_links": resi_links,
+        "direct_url": direct_links[0] if direct_links else (all_links[0] if all_links else ""),
+        "resi_url": resi_links[0] if resi_links else "",
+        "resi_egress_type": data.get("resi_egress_type", "local"),
+        "resi_host": data.get("resi_host", "127.0.0.1"),
+        "resi_port": data.get("resi_port", 8500),
         "sub_url_18443": f"https://{sub_host}:18443/sub.txt",
         "clash_url_18443": f"https://{sub_host}:18443/clash.yaml",
         "singbox_url_18443": f"https://{sub_host}:18443/singbox.json",
@@ -238,6 +243,144 @@ def call_aimili_ml(args):
         print(f"{C_RED}执行出错: {e}{C_RESET}")
 
 
+def update_env_file(key_values):
+    """更新或添加 /etc/default/aimilivpn 中的环境变量"""
+    env_lines = []
+    if os.path.exists(PROXY_ENV):
+        try:
+            with open(PROXY_ENV, "r", encoding="utf-8") as f:
+                env_lines = f.readlines()
+        except Exception:
+            env_lines = []
+
+    new_keys = set(key_values.keys())
+    out_lines = []
+    matched_keys = set()
+    for line in env_lines:
+        line_s = line.strip()
+        matched = False
+        for k in new_keys:
+            if line_s.startswith(f"{k}="):
+                matched = True
+                matched_keys.add(k)
+                out_lines.append(f'{k}="{key_values[k]}"\n')
+                break
+        if not matched:
+            out_lines.append(line)
+
+    for k, v in key_values.items():
+        if k not in matched_keys:
+            out_lines.append(f'{k}="{v}"\n')
+
+    try:
+        os.makedirs(os.path.dirname(PROXY_ENV), exist_ok=True)
+        with open(PROXY_ENV, "w", encoding="utf-8") as f:
+            f.writelines(out_lines)
+        return True
+    except Exception as e:
+        print(f"{C_RED}写入 {PROXY_ENV} 失败: {e}{C_RESET}")
+        return False
+
+
+def configure_residential_egress():
+    """配置住宅出口双模：AimiliVPN 原生内置动态池 (8500) 或 外部第三方商业住宅 SOCKS5"""
+    sub_data = get_subscription_data()
+    current_type = sub_data.get("resi_egress_type", "local")
+    curr_host = sub_data.get("resi_host", "127.0.0.1")
+    curr_port = str(sub_data.get("resi_port", 8500))
+    curr_user = ""
+    curr_pass = ""
+
+    if os.path.exists(PROXY_ENV):
+        try:
+            with open(PROXY_ENV, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("RESI_EGRESS_TYPE="):
+                        current_type = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    elif line.startswith("EXTERNAL_PROXY_HOST="):
+                        curr_host = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    elif line.startswith("EXTERNAL_PROXY_PORT="):
+                        curr_port = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    elif line.startswith("EXTERNAL_PROXY_USER="):
+                        curr_user = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    elif line.startswith("EXTERNAL_PROXY_PASS="):
+                        curr_pass = line.split("=", 1)[1].strip().strip('"').strip("'")
+        except Exception:
+            pass
+
+    print("\n" + "=" * 60)
+    print(f"{C_BOLD}{C_BLUE}     🏠 AimiliVPN 住宅出口模式配置 (双模自适应架构){C_RESET}")
+    print("=" * 60)
+    if current_type == "external":
+        print(f"当前住宅出口模式: {C_GREEN}外部第三方 SOCKS5 落地代理{C_RESET}")
+        print(f"  * 落地代理地址:   {C_BLUE}{curr_host}:{curr_port}{C_RESET}")
+        print(f"  * 认证用户名:     {C_YELLOW}{curr_user if curr_user else '(无密码认证)'}{C_RESET}")
+    else:
+        print(f"当前住宅出口模式: {C_GREEN}AimiliVPN 原生内置动态家宽池{C_RESET}")
+        print(f"  * 本地网桥:       {C_BLUE}127.0.0.1:8500{C_RESET} (由 AimiliVPN 自动轮换海量公共/住宅节点)")
+    print("-" * 60)
+    print("请选择要切换的住宅出口模式:")
+    print(f"  {C_GREEN}[1]{C_RESET} 切换为 AimiliVPN 原生内置动态家宽池 (127.0.0.1:8500)")
+    print(f"  {C_GREEN}[2]{C_RESET} 配置外部第三方住宅/商业级 SOCKS5 代理落地")
+    print(f"  {C_RED}[0]{C_RESET} 取消并返回")
+    print("=" * 60)
+
+    try:
+        opt = input(f"{C_BOLD}请输入选项 [0-2]: {C_RESET}").strip()
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    if opt == "1":
+        update_env_file({"RESI_EGRESS_TYPE": "local"})
+        print(f"{C_GREEN}已设置为: AimiliVPN 内置动态家宽池 (127.0.0.1:8500){C_RESET}")
+    elif opt == "2":
+        try:
+            host = input(f"请输入第三方 SOCKS5 服务器 IP 或域名 [{curr_host}]: ").strip() or curr_host
+            port = input(f"请输入第三方 SOCKS5 端口 [{curr_port}]: ").strip() or curr_port
+            user = input(f"请输入认证用户名 (无密码则直接回车) [{curr_user}]: ").strip()
+            if not user and curr_user:
+                keep = input(f"是否保留原用户名 '{curr_user}'? [Y/n]: ").strip().lower()
+                if keep != 'n':
+                    user = curr_user
+            pwd = input(f"请输入认证密码 (无密码则直接回车): ").strip()
+            if not pwd and curr_pass:
+                keep = input(f"是否保留原密码? [Y/n]: ").strip().lower()
+                if keep != 'n':
+                    pwd = curr_pass
+        except (KeyboardInterrupt, EOFError):
+            print("\n已取消配置。")
+            return
+
+        update_env_file({
+            "RESI_EGRESS_TYPE": "external",
+            "EXTERNAL_PROXY_HOST": host,
+            "EXTERNAL_PROXY_PORT": port,
+            "EXTERNAL_PROXY_USER": user,
+            "EXTERNAL_PROXY_PASS": pwd
+        })
+        print(f"{C_GREEN}已成功更新外部第三方 SOCKS5 配置: {host}:{port}{C_RESET}")
+    elif opt in ["0", "q", "exit"]:
+        return
+    else:
+        print(f"{C_RED}无效选项。{C_RESET}")
+        return
+
+    # 询问是否立刻重新生成 Sing-box 配置并热重启生效
+    try:
+        apply_now = input(f"{C_YELLOW}是否立即重新生成 Sing-box 配置并热重启生效？[Y/n]: {C_RESET}").strip().lower()
+        if apply_now != 'n':
+            setup_script = os.path.join(INSTALL_DIR, "scripts", "setup_singbox.sh")
+            if os.path.exists(setup_script):
+                print(f"{C_BLUE}正在执行事务快照与原子配置更新...{C_RESET}")
+                subprocess.call(["bash", setup_script])
+                print(f"{C_GREEN}住宅出口分流更新成功！{C_RESET}")
+            else:
+                print(f"{C_RED}未找到脚本: {setup_script}{C_RESET}")
+    except (KeyboardInterrupt, EOFError):
+        pass
+
+
 def interactive_menu():
     """交互式主控制台菜单"""
     while True:
@@ -245,33 +388,36 @@ def interactive_menu():
         sub = get_subscription_data()
         auth = get_web_auth_data()
 
+        resi_mode = "第三方 SOCKS5 代理" if sub.get("resi_egress_type") == "external" else "AimiliVPN 动态家宽池 (8500)"
+
         print("\n" + "=" * 60)
         print(f"{C_BOLD}{C_BLUE}         🚀 AimiliVPN & Sing-box 双核心管理控制台{C_RESET}")
         print("=" * 60)
         print(f"【核心服务状态】")
         print(f"  AimiliVPN 住宅代理: {status['aimilivpn']}  (SOCKS5 端口: 8500)")
-        print(f"  Sing-box 分流核心:  {status['singbox']}  (Reality 端口: 443)")
+        print(f"  Sing-box 分流核心:  {status['singbox']}  (Reality: 443 | 住宅出口: {resi_mode})")
         print(f"  Nginx 入口转发:     {status['nginx']}  (管理: 8443 / 订阅: 18443)")
-        if sub["direct_url"]:
+        if sub.get("direct_url") or sub.get("all_links"):
             print(f"  通用 HTTPS 订阅:    {C_BLUE}{sub['sub_url_18443']}{C_RESET}")
         print(f"  网页控制面板:       {C_BLUE}{auth['web_url']}{C_RESET}")
         print(f"  管理员账号/密码:    {C_YELLOW}{auth['username']}{C_RESET} / {C_YELLOW}{auth['password']}{C_RESET}")
         print("-" * 60)
         print(f"{C_BOLD}【快捷操作】{C_RESET}")
-        print(f"  {C_GREEN}[1]{C_RESET} 查看双节点与通用订阅链接 ({C_YELLOW}ml sub{C_RESET})")
+        print(f"  {C_GREEN}[1]{C_RESET} 查看 10 大节点矩阵与订阅链接 ({C_YELLOW}ml sub{C_RESET})")
         print(f"  {C_GREEN}[2]{C_RESET} 查看网页控制面板地址与账号密码 ({C_YELLOW}ml web{C_RESET})")
         print(f"  {C_GREEN}[3]{C_RESET} 查看 AimiliVPN 运行状态 ({C_YELLOW}ml status{C_RESET})")
         print(f"  {C_GREEN}[4]{C_RESET} 重启 Sing-box 核心服务")
         print(f"  {C_GREEN}[5]{C_RESET} 重启 AimiliVPN 服务")
         print(f"  {C_GREEN}[6]{C_RESET} 查看 Sing-box 实时日志")
         print(f"  {C_GREEN}[7]{C_RESET} 查看 AimiliVPN 实时日志 ({C_YELLOW}ml logs{C_RESET})")
-        print(f"  {C_GREEN}[8]{C_RESET} 重新生成 Sing-box 节点与订阅")
-        print(f"  {C_GREEN}[9]{C_RESET} 原生管理菜单 (修改密码/端口/更新/卸载)")
+        print(f"  {C_GREEN}[8]{C_RESET} 重新生成 Sing-box 节点与全生态订阅")
+        print(f"  {C_GREEN}[9]{C_RESET} 住宅出口路由配置 (内置Aimili池 / 外接第三方SOCKS5) ({C_YELLOW}ml egress{C_RESET})")
+        print(f"  {C_GREEN}[10]{C_RESET} 原生管理菜单 (修改密码/端口/更新/卸载)")
         print(f"  {C_RED}[0]{C_RESET} 退出控制台")
         print("=" * 60)
 
         try:
-            choice = input(f"{C_BOLD}请选择操作 [0-9]: {C_RESET}").strip()
+            choice = input(f"{C_BOLD}请选择操作 [0-10]: {C_RESET}").strip()
         except (KeyboardInterrupt, EOFError):
             print("\n已退出。")
             break
@@ -311,13 +457,16 @@ def interactive_menu():
                 print(f"{C_RED}未找到脚本: {setup_script}{C_RESET}")
             input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
         elif choice == "9":
+            configure_residential_egress()
+            input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
+        elif choice == "10":
             call_aimili_ml([])
             break
         elif choice in ["0", "q", "quit", "exit"]:
             print("已退出控制台。")
             break
         else:
-            print(f"{C_RED}无效选项，请输入 0 到 9 之间的数字。{C_RESET}")
+            print(f"{C_RED}无效选项，请输入 0 到 10 之间的数字。{C_RESET}")
 
 
 def main():
@@ -328,6 +477,9 @@ def main():
             return
         elif cmd in ["web", "ui", "panel", "admin", "dashboard"]:
             print_web_dashboard()
+            return
+        elif cmd in ["egress", "proxy", "socks5", "resi"]:
+            configure_residential_egress()
             return
         elif cmd in ["singbox", "sb"]:
             subcmd = sys.argv[2] if len(sys.argv) > 2 else "status"
@@ -356,8 +508,8 @@ def main():
             call_aimili_ml(["status"])
             sub = get_subscription_data()
             auth = get_web_auth_data()
-            if sub["direct_url"]:
-                print(f"\n{C_GREEN}【Sing-box 订阅与双节点就绪】{C_RESET}")
+            if sub.get("direct_url") or sub.get("all_links"):
+                print(f"\n{C_GREEN}【Sing-box 订阅与全协议矩阵就绪】{C_RESET}")
                 print(f"  * 订阅入口: {C_BLUE}{sub['sub_url_18443']}{C_RESET}")
                 print(f"  * 节点详情: {C_YELLOW}ml sub{C_RESET}")
             print(f"\n{C_GREEN}【网页控制面板】{C_RESET}")

@@ -22,9 +22,11 @@ def generate_subscriptions(nodes_data, output_dir):
     direct_uuid = nodes_data.get("direct_uuid", "")
     resi_uuid = nodes_data.get("resi_uuid", "")
 
-    # 端口分配
+    # 端口分配与混淆加固
     vless_port = nodes_data.get("vless_port", 443)
     hy2_port = nodes_data.get("hy2_port", 443)
+    hy2_obfs = nodes_data.get("hy2_obfs", "")
+    hy2_hop_ports = nodes_data.get("hy2_hop_ports", "443,40000-50000")
     tuic_port = nodes_data.get("tuic_port", 8443)
     anytls_port = nodes_data.get("anytls_port", 8444)
     vmess_port = nodes_data.get("vmess_port", 8445)
@@ -53,10 +55,12 @@ def generate_subscriptions(nodes_data, output_dir):
     vless_r = f"vless://{resi_uuid}@{public_ip}:{vless_port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={camouflage_sni}&fp=chrome&pbk={public_key}&sid={short_id}&type=tcp#{urllib.parse.quote(node_names['vless_resi'])}"
     links.extend([vless_d, vless_r])
 
-    # 1.2 Hysteria 2
+    # 1.2 Hysteria 2 (Salamander 混淆 + 端口跳跃)
     sni_param = f"&sni={domain}" if domain else f"&sni={camouflage_sni}&insecure=1"
-    hy2_d = f"hysteria2://{direct_uuid}@{public_ip}:{hy2_port}?mport={hy2_port}{sni_param}#{urllib.parse.quote(node_names['hy2_direct'])}"
-    hy2_r = f"hysteria2://{resi_uuid}@{public_ip}:{hy2_port}?mport={hy2_port}{sni_param}#{urllib.parse.quote(node_names['hy2_resi'])}"
+    obfs_param = f"&obfs=salamander&obfs-password={urllib.parse.quote(hy2_obfs)}" if hy2_obfs else ""
+    mport_val = hy2_hop_ports if hy2_hop_ports else hy2_port
+    hy2_d = f"hysteria2://{direct_uuid}@{public_ip}:{hy2_port}?mport={mport_val}{sni_param}{obfs_param}#{urllib.parse.quote(node_names['hy2_direct'])}"
+    hy2_r = f"hysteria2://{resi_uuid}@{public_ip}:{hy2_port}?mport={mport_val}{sni_param}{obfs_param}#{urllib.parse.quote(node_names['hy2_resi'])}"
     links.extend([hy2_d, hy2_r])
 
     # 1.3 TUIC v5
@@ -105,6 +109,23 @@ def generate_subscriptions(nodes_data, output_dir):
     resi_proxy_names = [node_names["vless_resi"], node_names["hy2_resi"], node_names["tuic_resi"], node_names["anytls_resi"], node_names["vmess_resi"]]
     all_proxy_names = direct_proxy_names + resi_proxy_names
 
+    hy2_proxy_d = {
+        "name": node_names["hy2_direct"], "type": "hysteria2", "server": public_ip, "port": hy2_port,
+        "password": direct_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
+    }
+    hy2_proxy_r = {
+        "name": node_names["hy2_resi"], "type": "hysteria2", "server": public_ip, "port": hy2_port,
+        "password": resi_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
+    }
+    if hy2_hop_ports:
+        hy2_proxy_d["ports"] = str(hy2_hop_ports)
+        hy2_proxy_r["ports"] = str(hy2_hop_ports)
+    if hy2_obfs:
+        hy2_proxy_d["obfs"] = "salamander"
+        hy2_proxy_d["obfs-password"] = hy2_obfs
+        hy2_proxy_r["obfs"] = "salamander"
+        hy2_proxy_r["obfs-password"] = hy2_obfs
+
     clash_proxies = [
         # VLESS Reality Direct & Resi
         {
@@ -120,14 +141,8 @@ def generate_subscriptions(nodes_data, output_dir):
             "client-fingerprint": "chrome"
         },
         # Hysteria 2 Direct & Resi
-        {
-            "name": node_names["hy2_direct"], "type": "hysteria2", "server": public_ip, "port": hy2_port,
-            "password": direct_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
-        },
-        {
-            "name": node_names["hy2_resi"], "type": "hysteria2", "server": public_ip, "port": hy2_port,
-            "password": resi_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
-        },
+        hy2_proxy_d,
+        hy2_proxy_r,
         # TUIC v5 Direct & Resi
         {
             "name": node_names["tuic_direct"], "type": "tuic", "server": public_ip, "port": tuic_port,
@@ -215,7 +230,7 @@ def generate_subscriptions(nodes_data, output_dir):
                         lines.append(_to_yaml(v, indent + 1))
                     else:
                         val = "true" if v is True else ("false" if v is False else (str(v) if v is not None else "''"))
-                        if isinstance(v, str) and (":" in v or "#" in v or " " in v or "[" in v or "{" in v or not v):
+                        if isinstance(v, str) and (":" in v or "#" in v or " " in v or "[" in v or "{" in v or "," in v or not v):
                             val = f'"{v}"'
                         lines.append(f"{prefix}{k}: {val}")
             elif isinstance(obj, list):
@@ -229,7 +244,7 @@ def generate_subscriptions(nodes_data, output_dir):
                                     lines.append(_to_yaml(v, indent + 2))
                                 else:
                                     val = "true" if v is True else ("false" if v is False else str(v))
-                                    if isinstance(v, str) and (":" in v or "#" in v or " " in v or "[" in v or "{" in v or not v):
+                                    if isinstance(v, str) and (":" in v or "#" in v or " " in v or "[" in v or "{" in v or "," in v or not v):
                                         val = f'"{v}"'
                                     lines.append(f"{prefix}- {k}: {val}")
                                 first = False
@@ -240,12 +255,12 @@ def generate_subscriptions(nodes_data, output_dir):
                                     lines.append(_to_yaml(v, indent + 2))
                                 else:
                                     val = "true" if v is True else ("false" if v is False else str(v))
-                                    if isinstance(v, str) and (":" in v or "#" in v or " " in v or "[" in v or "{" in v or not v):
+                                    if isinstance(v, str) and (":" in v or "#" in v or " " in v or "[" in v or "{" in v or "," in v or not v):
                                         val = f'"{v}"'
                                     lines.append(f"{item_prefix}{k}: {val}")
                     else:
                         val = str(item)
-                        if isinstance(item, str) and (":" in item or "#" in item or " " in item or "[" in item or "{" in item or not item):
+                        if isinstance(item, str) and (":" in item or "#" in item or " " in item or "[" in item or "{" in item or "," in item or not item):
                             val = f'"{item}"'
                         lines.append(f"{prefix}- {val}")
             return "\n".join(lines)
@@ -257,6 +272,22 @@ def generate_subscriptions(nodes_data, output_dir):
     # --------------------------------------------------------------------------
     # 4. 输出 Sing-box 客户端开箱即用完整配置 (singbox.json)
     # --------------------------------------------------------------------------
+    hy2_sb_d = {
+        "type": "hysteria2", "tag": node_names["hy2_direct"], "server": public_ip, "server_port": hy2_port,
+        "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+    }
+    hy2_sb_r = {
+        "type": "hysteria2", "tag": node_names["hy2_resi"], "server": public_ip, "server_port": hy2_port,
+        "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+    }
+    if hy2_hop_ports:
+        hop_list = [p.strip().replace("-", ":") for p in str(hy2_hop_ports).split(",") if p.strip()]
+        hy2_sb_d["server_ports"] = hop_list
+        hy2_sb_r["server_ports"] = hop_list
+    if hy2_obfs:
+        hy2_sb_d["obfs"] = {"type": "salamander", "password": hy2_obfs}
+        hy2_sb_r["obfs"] = {"type": "salamander", "password": hy2_obfs}
+
     sb_outbounds = [
         {
             "type": "selector",
@@ -296,15 +327,9 @@ def generate_subscriptions(nodes_data, output_dir):
             "uuid": resi_uuid, "flow": "xtls-rprx-vision", "network": "tcp",
             "tls": {"enabled": True, "server_name": camouflage_sni, "reality": {"enabled": True, "public_key": public_key, "short_id": short_id}, "utls": {"enabled": True, "fingerprint": "chrome"}}
         },
-        # Outbounds - Hysteria 2
-        {
-            "type": "hysteria2", "tag": node_names["hy2_direct"], "server": public_ip, "server_port": hy2_port,
-            "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
-        },
-        {
-            "type": "hysteria2", "tag": node_names["hy2_resi"], "server": public_ip, "server_port": hy2_port,
-            "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
-        },
+        # Outbounds - Hysteria 2 (Salamander 混淆 + 端口跳跃)
+        hy2_sb_d,
+        hy2_sb_r,
         # Outbounds - TUIC
         {
             "type": "tuic", "tag": node_names["tuic_direct"], "server": public_ip, "server_port": tuic_port,

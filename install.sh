@@ -785,6 +785,22 @@ echo -e "${GREEN}  -> 账号: socks5 / 密码: ilovestudy${PLAIN}"
 
 install -m 755 "${INSTALL_DIR}/github_update.sh" /usr/local/sbin/aimilivpn-github-update
 
+if [ -f "${INSTALL_DIR}/aimili_cli.py" ]; then
+    cat > /usr/bin/ml <<'EOF'
+#!/usr/bin/env python3
+import sys
+sys.path.insert(0, "/opt/aimilivpn")
+try:
+    import aimili_cli
+    aimili_cli.main()
+except Exception as e:
+    sys.stderr.write(f"执行出错: {e}\n")
+    raise SystemExit(1)
+EOF
+    chmod +x /usr/bin/ml
+    ln -sf /usr/bin/ml /usr/local/bin/ml 2>/dev/null || true
+fi
+
 cat > /etc/systemd/system/aimilivpn-github-update.service <<'UNIT'
 [Unit]
 Description=AimiliVPN GitHub production updater
