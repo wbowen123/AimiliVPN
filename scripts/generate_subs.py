@@ -31,18 +31,18 @@ def generate_subscriptions(nodes_data, output_dir):
     anytls_port = nodes_data.get("anytls_port", 8444)
     vmess_port = nodes_data.get("vmess_port", 8445)
 
-    # 节点命名定义
+    # 节点命名定义 (明确标注出站属性与传输协议架构)
     node_names = {
-        "vless_direct": "🚀 [直连-极速] VLESS-Reality (原生千兆)",
-        "vless_resi":   "🏠 [住宅-家宽] VLESS-Reality (Aimili动态家宽)",
-        "hy2_direct":   "🌪️ [直连-暴力] Hysteria 2 (晚高峰不丢包)",
-        "hy2_resi":     "🏘️ [住宅-家宽] Hysteria 2 (恶劣线路家宽加速)",
-        "tuic_direct":  "⚡ [直连-极速] TUIC v5 (QUIC 0-RTT秒开)",
-        "tuic_resi":    "🏡 [住宅-家宽] TUIC v5 (晚高峰家宽流媒体)",
-        "anytls_direct":"🛡️ [直连-混淆] AnyTLS (动态包长混淆)",
-        "anytls_resi":  "🌐 [住宅-混淆] AnyTLS (特征防探测家宽)",
-        "vmess_direct": "☁️ [直连-分段] VMess-xHTTP (分块流防审查)",
-        "vmess_resi":   "🛋️ [住宅-分段] VMess-xHTTP (分块流动态家宽)"
+        "vless_direct": "🚀 [直连-极速] VLESS-Reality【TCP-Vision·原生千兆】",
+        "vless_resi":   "🏠 [住宅-家宽] VLESS-Reality【TCP-Vision·Aimili动态家宽】",
+        "hy2_direct":   "🌪️ [直连-极速] Hysteria 2【H3-UDP-Brutal·暴力抗丢包】",
+        "hy2_resi":     "🏘️ [住宅-家宽] Hysteria 2【H3-UDP-Brutal·恶劣线路家宽加速】",
+        "tuic_direct":  "⚡ [直连-极速] TUIC v5【H3-QUIC-0RTT·秒开首选】",
+        "tuic_resi":    "🏡 [住宅-家宽] TUIC v5【H3-QUIC-0RTT·晚高峰家宽流媒体】",
+        "anytls_direct":"🛡️ [直连-极速] AnyTLS【TCP-Padding·动态包长防探测】",
+        "anytls_resi":  "🌐 [住宅-家宽] AnyTLS【TCP-Padding·特征防探测家宽】",
+        "vmess_direct": "☁️ [直连-极速] VMess-xHTTP【H2/H3-分块·分段防审查】",
+        "vmess_resi":   "🛋️ [住宅-家宽] VMess-xHTTP【H2/H3-分块·动态家宽流】"
     }
 
     # --------------------------------------------------------------------------
@@ -109,7 +109,7 @@ def generate_subscriptions(nodes_data, output_dir):
                                     clean_ip = c
                         except Exception:
                             pass
-                    argo_ps = "☁️ [Argo-隧道] VMess-WS (Cloudflare全球穿透)"
+                    argo_ps = "⛅ [CDN-穿透] VMess-WS-Argo【CDN-Anycast·Cloudflare全球破墙】"
                     vmess_argo_obj = {
                         "v": "2", "ps": argo_ps, "add": clean_ip, "port": 443,
                         "id": direct_uuid, "aid": 0, "net": "ws", "type": "none",

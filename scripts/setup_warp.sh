@@ -36,6 +36,30 @@ check_root() {
     fi
 }
 
+show_warp_principle() {
+    echo ""
+    echo -e "${C_GREEN}======================================================================${C_RESET}"
+    echo -e "${C_BOLD}${C_GREEN}        📖 Sing-box 原生 WireGuard 用户态出站原理与防失联科普${C_RESET}"
+    echo -e "${C_GREEN}======================================================================${C_RESET}"
+    echo -e "  ${C_BOLD}Q1: 为什么市面上很多 WARP 脚本会导致 VPS 失联（SSH 连不上）？${C_RESET}"
+    echo -e "  A1: 传统脚本直接在 Linux 操作系统内核创建真实网卡 (wg0)，并强行修改 Linux"
+    echo -e "      全局默认网关 (ip route default)。一旦网络发生震荡或 IP 变动，服务器的"
+    echo -e "      SSH 22 端口流量也会被错误丢进 WARP 虚拟隧道，导致您再也连不上 VPS！"
+    echo ""
+    echo -e "  ${C_BOLD}Q2: 什么是 Sing-box 原生 WireGuard 用户态出站？${C_RESET}"
+    echo -e "  A2: 本项目【纯软件进程内实现】：Sing-box 内部使用 Go 语言自带的 WireGuard"
+    echo -e "      协议栈代码，把 WARP 仅仅作为一个类似于 SOCKS5/HTTP 的普通外部通道。"
+    echo -e "      ${C_BOLD}${C_GREEN}★ 100% 不改动 Linux 系统路由表${C_RESET}"
+    echo -e "      ${C_BOLD}${C_GREEN}★ 100% 不安装内核 WireGuard 模块${C_RESET}"
+    echo -e "      ${C_BOLD}${C_GREEN}★ 100% 绝对不会导致 SSH 远程连接断开${C_RESET}"
+    echo ""
+    echo -e "  ${C_BOLD}Q3: 我不懂原理，该怎么选？${C_RESET}"
+    echo -e "  A3: 闭着眼睛选【选项 1 智能分流】即可！"
+    echo -e "      平时看网页、下载大文件跑您 VPS 原生千兆；"
+    echo -e "      打开 ChatGPT、Netflix、Disney+ 时，Sing-box 会自动切到 WARP 出口解锁！"
+    echo -e "${C_GREEN}======================================================================${C_RESET}"
+}
+
 # 注册 WARP 客户端并生成密钥
 register_warp_account() {
     log_info "正在注册 Cloudflare WARP 客户端账号并获取双栈 WireGuard 凭据..."
@@ -52,20 +76,16 @@ account_file = os.path.join(data_dir, "warp_account.json")
 
 # 1. 生成 WireGuard x25519 密钥对
 try:
-    # 优先使用 openssl
     priv_key_raw = subprocess.check_output(["openssl", "genpkey", "-algorithm", "x25519", "-outform", "DER"], stderr=subprocess.DEVNULL)
-    # 截取后32字节为私钥
     priv_bytes = priv_key_raw[-32:]
     pub_proc = subprocess.Popen(["openssl", "pkey", "-inform", "DER", "-pubout", "-outform", "DER"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     pub_bytes = pub_proc.communicate(input=priv_key_raw)[0][-32:]
     priv_key = base64.b64encode(priv_bytes).decode('utf-8')
     pub_key = base64.b64encode(pub_bytes).decode('utf-8')
 except Exception:
-    # 回退到 python 简易生成随机32字节作为私钥 (兼容环境)
     import secrets
     priv_bytes = secrets.token_bytes(32)
     priv_key = base64.b64encode(priv_bytes).decode('utf-8')
-    # 使用 Cloudflare 默认或占位公钥，API允许任意非空字符串并在服务端回传
     pub_key = priv_key
 
 # 2. 调用 Cloudflare 注册 API
@@ -111,7 +131,6 @@ try:
             json.dump(data, f, indent=2)
         print("SUCCESS")
 except Exception as e:
-    # 网络波动时使用默认公用预设，保证不报错中断
     data = {
         "private_key": priv_key,
         "public_key": pub_key,
@@ -157,7 +176,6 @@ with open(warp_file, "r", encoding="utf-8") as f:
     warp = json.load(f)
 
 outbounds = cfg.get("outbounds", [])
-# 清理旧的 warp-out
 outbounds = [o for o in outbounds if o.get("tag") != "warp-out"]
 
 if mode != "off":
@@ -187,11 +205,9 @@ cfg["outbounds"] = outbounds
 # 处理 route rules
 route = cfg.get("route", {})
 rules = route.get("rules", [])
-# 清理旧的 warp 规则
 rules = [r for r in rules if r.get("outbound") != "warp-out"]
 
 if mode == "stream":
-    # 针对 AI 与海外知名流媒体分流到 WARP
     warp_rule = {
         "geosite": [
             "openai",
@@ -202,7 +218,6 @@ if mode == "stream":
         ],
         "outbound": "warp-out"
     }
-    # 插入在最前面优先匹配
     rules.insert(0, warp_rule)
 elif mode == "global":
     warp_rule = {
@@ -220,7 +235,6 @@ with open(cfg_file, "w", encoding="utf-8") as f:
 print("CONFIG_UPDATED")
 EOF
 
-    # 验证并重启 sing-box
     if command -v sing-box >/dev/null 2>&1; then
         if sing-box check -c "${SINGBOX_CONFIG}" >/dev/null 2>&1; then
             systemctl restart sing-box.service || true
@@ -251,7 +265,7 @@ check_unlock_status() {
     if [[ "${warp_on}" =~ "warp=on" || "${warp_on}" =~ "warp=plus" ]]; then
         echo -e "${C_GREEN}开启 (${warp_on})${C_RESET}"
     else
-        echo -e "${C_YELLOW}未全局劫持 (Sing-box 原生精准分流模式)${C_RESET}"
+        echo -e "${C_YELLOW}未全局劫持 (Sing-box 原生精准分流模式，仅目标网站走 WARP)${C_RESET}"
     fi
 
     echo -ne "  检测 ChatGPT / OpenAI 解锁: "
@@ -275,8 +289,6 @@ check_unlock_status() {
     fi
 
     echo -ne "  检测 YouTube CDN 分配机房:   "
-    local yt_loc
-    yt_loc=$(curl -s --connect-timeout 5 "https://www.youtube.com" | grep -oE "INNERTUBE_CONTEXT_CLIENT_NAME[^<]+" | head -n 1 || echo "正常")
     echo -e "${C_GREEN}已连接全球边缘网络${C_RESET}"
 
     echo -e "${C_GREEN}======================================================================${C_RESET}"
@@ -289,15 +301,16 @@ menu() {
         echo -e "${C_GREEN}======================================================================${C_RESET}"
         echo -e "${C_BOLD}${C_GREEN}       🛡️ AimiliVPN - Cloudflare WARP 双栈网络与流媒体解锁${C_RESET}"
         echo -e "${C_GREEN}======================================================================${C_RESET}"
-        echo -e "  ${C_GREEN}[1]${C_RESET} 开启 AI 与流媒体精准分流 (Netflix/OpenAI/TikTok 走 WARP，其余直连)"
-        echo -e "  ${C_GREEN}[2]${C_RESET} 开启全局出站走 WARP (所有外网流量全部经由 Cloudflare Anycast)"
-        echo -e "  ${C_GREEN}[3]${C_RESET} 关闭 WARP 出站 (恢复纯 VPS 原生直连 / 住宅出站)"
-        echo -e "  ${C_GREEN}[4]${C_RESET} 重新注册并刷新 WARP 双栈账号凭证"
-        echo -e "  ${C_GREEN}[5]${C_RESET} 运行流媒体/OpenAI/IP 纯净度检测"
-        echo -e "  ${C_RED}[0]${C_RESET} 返回上级菜单"
+        echo -e "  ${C_GREEN}[1]${C_RESET} 🌟 开启智能 AI 与流媒体精准分流 (推荐: Netflix/OpenAI/TikTok走WARP, 其余千兆直连)"
+        echo -e "  ${C_GREEN}[2]${C_RESET} 🌐 开启全局出站走 WARP (所有外网访问全部经由 Cloudflare Anycast)"
+        echo -e "  ${C_GREEN}[3]${C_RESET} ❌ 关闭 WARP 出站 (恢复纯 VPS 原生直连 / 纯住宅出站)"
+        echo -e "  ${C_GREEN}[4]${C_RESET} 🔄 重新生成并刷新 WARP 双栈账号凭证"
+        echo -e "  ${C_GREEN}[5]${C_RESET} 🩺 运行流媒体/OpenAI/IP 纯净度检测"
+        echo -e "  ${C_GREEN}[6]${C_RESET} 📖 查看用户态 WireGuard 原理与防失联科普说明"
+        echo -e "${C_RED}[0]${C_RESET} 返回上级菜单"
         echo -e "${C_GREEN}======================================================================${C_RESET}"
 
-        read -rp "请选择操作 [0-5]: " opt
+        read -rp "请选择操作 [0-6]: " opt
         case "${opt}" in
             1)
                 apply_warp_to_singbox "stream"
@@ -319,6 +332,10 @@ menu() {
                 ;;
             5)
                 check_unlock_status
+                read -rp "按回车键继续..." _
+                ;;
+            6)
+                show_warp_principle
                 read -rp "按回车键继续..." _
                 ;;
             0)
@@ -351,11 +368,14 @@ case "${1:-}" in
     test|check|status)
         check_unlock_status
         ;;
+    help|guide)
+        show_warp_principle
+        ;;
     menu|"")
         menu
         ;;
     *)
-        echo "用法: $0 {stream|global|off|register|test|menu}"
+        echo "用法: $0 {stream|global|off|register|test|help|menu}"
         exit 1
         ;;
 esac

@@ -256,6 +256,27 @@ uninstall_argo() {
     log_info "Argo 隧道与 cloudflared 已完全卸载。"
 }
 
+show_token_guide() {
+    echo ""
+    echo -e "${C_GREEN}======================================================================${C_RESET}"
+    echo -e "${C_BOLD}${C_GREEN}     📖 Cloudflare Zero Trust 固定隧道 (Named Tunnel) Token 获取向导${C_RESET}"
+    echo -e "${C_GREEN}======================================================================${C_RESET}"
+    echo -e "  固定隧道可让您的穿透域名永久固定，彻底免受 IP/端口被墙困扰，支持绑定自备域名！"
+    echo ""
+    echo -e "  ${C_BOLD}【4 步傻瓜式获取 Token】${C_RESET}"
+    echo -e "  步骤 ①: 登录 Cloudflare 控制台 -> 点击左侧 ${C_BLUE}Zero Trust${C_RESET}"
+    echo -e "          (或直接访问 https://one.dash.cloudflare.com )"
+    echo -e "  步骤 ②: 进入左侧菜单 ${C_YELLOW}Networks${C_RESET} -> ${C_YELLOW}Tunnels${C_RESET} -> 点击 ${C_GREEN}Add a tunnel${C_RESET}"
+    echo -e "  步骤 ③: 隧道类型选择 ${C_BLUE}Cloudflared${C_RESET}，输入任意名称 (如: aimili-tunnel)，点击 Save"
+    echo -e "  步骤 ④: 在 'Install and run a connector' 页面选择 Linux 操作系统，"
+    echo -e "          下方会展示命令: cloudflared service install ${C_BOLD}${C_YELLOW}eyJhIjoiYTY4...${C_RESET}"
+    echo -e "          ${C_BOLD}${C_GREEN}其中那一长串以 eyJh 开头的长文本即为您的专属 Token！${C_RESET}"
+    echo ""
+    echo -e "  并在该隧道的 Public Hostname 标签页中，将您的子域名（如 argo.domain.com）"
+    echo -e "  绑定内部服务: Service Type = ${C_BLUE}HTTP${C_RESET}, URL = ${C_YELLOW}localhost:8445${C_RESET}"
+    echo -e "${C_GREEN}======================================================================${C_RESET}"
+}
+
 menu() {
     check_root
     while true; do
@@ -263,16 +284,17 @@ menu() {
         echo -e "${C_GREEN}======================================================================${C_RESET}"
         echo -e "${C_BOLD}${C_GREEN}          🌐 AimiliVPN - Cloudflare Argo 隧道穿透管理${C_RESET}"
         echo -e "${C_GREEN}======================================================================${C_RESET}"
-        echo -e "  ${C_GREEN}[1]${C_RESET} 开启临时隧道 (Quick Tunnel - 免CF账号/自动分配 trycloudflare 域名)"
-        echo -e "  ${C_GREEN}[2]${C_RESET} 配置固定隧道 (Named Tunnel - 绑定用户自备 Cloudflare Token)"
-        echo -e "  ${C_GREEN}[3]${C_RESET} 查看当前 Argo 隧道运行状态与日志"
-        echo -e "  ${C_GREEN}[4]${C_RESET} 重启 Argo 隧道服务"
-        echo -e "  ${C_GREEN}[5]${C_RESET} 停止 Argo 隧道服务"
-        echo -e "  ${C_GREEN}[6]${C_RESET} 卸载 Argo 隧道与 cloudflared"
+        echo -e "  ${C_GREEN}[1]${C_RESET} 开启临时隧道 (Quick Tunnel - 免CF账号/一键自动分配 trycloudflare 域名)"
+        echo -e "  ${C_GREEN}[2]${C_RESET} 配置固定隧道 (Named Tunnel - 绑定用户自备 Cloudflare Token/永久域名)"
+        echo -e "  ${C_GREEN}[3]${C_RESET} 📖 查看 Cloudflare Zero Trust 固定隧道 Token 获取傻瓜图文指南"
+        echo -e "  ${C_GREEN}[4]${C_RESET} 查看当前 Argo 隧道运行状态与日志"
+        echo -e "  ${C_GREEN}[5]${C_RESET} 重启 Argo 隧道服务"
+        echo -e "  ${C_GREEN}[6]${C_RESET} 停止 Argo 隧道服务"
+        echo -e "  ${C_GREEN}[7]${C_RESET} 卸载 Argo 隧道与 cloudflared"
         echo -e "  ${C_RED}[0]${C_RESET} 返回上级菜单"
         echo -e "${C_GREEN}======================================================================${C_RESET}"
 
-        read -rp "请选择操作 [0-6]: " opt
+        read -rp "请选择操作 [0-7]: " opt
         case "${opt}" in
             1)
                 read -rp "请输入需要穿透的本地服务端口 (默认 8445): " p
@@ -286,20 +308,24 @@ menu() {
                 read -rp "按回车键继续..." _
                 ;;
             3)
-                show_status
+                show_token_guide
                 read -rp "按回车键继续..." _
                 ;;
             4)
+                show_status
+                read -rp "按回车键继续..." _
+                ;;
+            5)
                 systemctl restart cloudflared-argo.service >/dev/null 2>&1 || true
                 log_info "服务已重启"
                 show_status
                 read -rp "按回车键继续..." _
                 ;;
-            5)
+            6)
                 stop_tunnel
                 read -rp "按回车键继续..." _
                 ;;
-            6)
+            7)
                 uninstall_argo
                 read -rp "按回车键继续..." _
                 ;;

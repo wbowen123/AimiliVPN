@@ -9,6 +9,7 @@ import sys
 import json
 import subprocess
 import shutil
+import urllib.parse
 
 INSTALL_DIR = "/opt/aimilivpn"
 DATA_DIR = os.path.join(INSTALL_DIR, "vpngate_data")
@@ -114,6 +115,7 @@ def get_subscription_data():
 
     direct_links = [l for l in all_links if "直连" in l or "原生" in l]
     resi_links = [l for l in all_links if "住宅" in l or "家宽" in l]
+    argo_links = [l for l in all_links if "Argo" in l or "CDN" in l]
 
     return {
         "public_ip": public_ip,
@@ -122,6 +124,7 @@ def get_subscription_data():
         "all_links": all_links,
         "direct_links": direct_links,
         "resi_links": resi_links,
+        "argo_links": argo_links,
         "direct_url": direct_links[0] if direct_links else (all_links[0] if all_links else ""),
         "resi_url": resi_links[0] if resi_links else "",
         "resi_egress_type": data.get("resi_egress_type", "local"),
@@ -165,11 +168,19 @@ def print_subscription_card():
 
     print(f"\n{C_BOLD}【2. 原生机房极速出口节点 (VPS 千兆直连 / 低延迟 / 刷4K)】{C_RESET}")
     for idx, l in enumerate(sub["direct_links"], 1):
-        print(f"  {C_MAGENTA}[直连节点 {idx}]{C_RESET} {C_YELLOW}{l}{C_RESET}")
+        name = urllib.parse.unquote(l.split("#")[-1]) if "#" in l else f"直连节点 {idx}"
+        print(f"  {C_MAGENTA}{name}{C_RESET}\n    {C_YELLOW}{l}{C_RESET}")
 
     print(f"\n{C_BOLD}【3. 住宅家宽穿透出口节点 (Aimili 动态家宽 / 解锁流媒体 / 跨境防封)】{C_RESET}")
     for idx, l in enumerate(sub["resi_links"], 1):
-        print(f"  {C_MAGENTA}[家宽节点 {idx}]{C_RESET} {C_YELLOW}{l}{C_RESET}")
+        name = urllib.parse.unquote(l.split("#")[-1]) if "#" in l else f"家宽节点 {idx}"
+        print(f"  {C_MAGENTA}{name}{C_RESET}\n    {C_YELLOW}{l}{C_RESET}")
+
+    if sub.get("argo_links"):
+        print(f"\n{C_BOLD}【4. Cloudflare Argo 隧道穿透出口节点 (免证书 / 全球 Anycast 破墙)】{C_RESET}")
+        for idx, l in enumerate(sub["argo_links"], 1):
+            name = urllib.parse.unquote(l.split("#")[-1]) if "#" in l else f"Argo节点 {idx}"
+            print(f"  {C_MAGENTA}{name}{C_RESET}\n    {C_YELLOW}{l}{C_RESET}")
 
     print(f"\n{C_BOLD}【4. 网页控制面板 (可视化国家/节点切换)】{C_RESET}")
     print(f"  * 管理后台地址:     {C_BLUE}{C_BOLD}{auth['web_url']}{C_RESET}")
@@ -421,12 +432,13 @@ def interactive_menu():
         print(f"  {C_GREEN}[16]{C_RESET} HTML5 本地高保真伪装网站模版库切换 ({C_YELLOW}ml camo{C_RESET})")
         print(f"  {C_GREEN}[17]{C_RESET} Telegram Bot 节点与告警即时推送 ({C_YELLOW}ml tg{C_RESET})")
         print(f"  {C_GREEN}[18]{C_RESET} 定时系统自愈与内存深度清理管理 ({C_YELLOW}ml cron{C_RESET})")
-        print(f"  {C_GREEN}[19]{C_RESET} 原生管理菜单 (修改密码/端口/更新/卸载)")
+        print(f"  {C_GREEN}[19]{C_RESET} 📖 Cloudflare DNS 双栈解析与子域名傻瓜向导 ({C_YELLOW}ml dns{C_RESET})")
+        print(f"  {C_GREEN}[20]{C_RESET} 原生管理菜单 (修改密码/端口/更新/卸载)")
         print(f"  {C_RED}[0]{C_RESET} 退出控制台")
         print("=" * 60)
 
         try:
-            choice = input(f"{C_BOLD}请选择操作 [0-19]: {C_RESET}").strip()
+            choice = input(f"{C_BOLD}请选择操作 [0-20]: {C_RESET}").strip()
         except (KeyboardInterrupt, EOFError):
             print("\n已退出。")
             break
@@ -532,13 +544,20 @@ def interactive_menu():
                 print(f"{C_RED}未找到定时维护脚本: {cron_script}{C_RESET}")
             input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
         elif choice == "19":
+            cf_script = os.path.join(INSTALL_DIR, "scripts", "cf_speedtest.sh")
+            if os.path.exists(cf_script):
+                subprocess.call(["bash", cf_script, "guide"])
+            else:
+                print(f"{C_RED}未找到脚本: {cf_script}{C_RESET}")
+            input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
+        elif choice == "20":
             call_aimili_ml([])
             break
         elif choice in ["0", "q", "quit", "exit"]:
             print("已退出控制台。")
             break
         else:
-            print(f"{C_RED}无效选项，请输入 0 到 19 之间的数字。{C_RESET}")
+            print(f"{C_RED}无效选项，请输入 0 到 20 之间的数字。{C_RESET}")
 
 
 def main():
@@ -623,6 +642,13 @@ def main():
                 subprocess.call(["bash", cron_script] + args)
             else:
                 print(f"{C_RED}未找到定时维护脚本: {cron_script}{C_RESET}")
+            return
+        elif cmd in ["dns", "dualstack", "guide"]:
+            cf_script = os.path.join(INSTALL_DIR, "scripts", "cf_speedtest.sh")
+            if os.path.exists(cf_script):
+                subprocess.call(["bash", cf_script, "guide"])
+            else:
+                print(f"{C_RED}未找到脚本: {cf_script}{C_RESET}")
             return
         elif cmd in ["singbox", "sb"]:
             subcmd = sys.argv[2] if len(sys.argv) > 2 else "status"
