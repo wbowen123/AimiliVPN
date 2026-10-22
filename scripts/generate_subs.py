@@ -167,6 +167,10 @@ def generate_subscriptions(nodes_data, output_dir):
         }
     ]
 
+    clash_direct_names = [p["name"] for p in clash_proxies if "直连" in p["name"] or "原生" in p["name"]]
+    clash_resi_names = [p["name"] for p in clash_proxies if "住宅" in p["name"] or "家宽" in p["name"]]
+    clash_all_names = [p["name"] for p in clash_proxies]
+
     clash_config = {
         "port": 7890,
         "socks-port": 7891,
@@ -179,7 +183,7 @@ def generate_subscriptions(nodes_data, output_dir):
             {
                 "name": "🚀 极速原生 (自动优选)",
                 "type": "url-test",
-                "proxies": direct_proxy_names,
+                "proxies": clash_direct_names,
                 "url": "http://www.gstatic.com/generate_204",
                 "interval": 300,
                 "tolerance": 50
@@ -187,7 +191,7 @@ def generate_subscriptions(nodes_data, output_dir):
             {
                 "name": "🏠 住宅家宽 (自动优选)",
                 "type": "url-test",
-                "proxies": resi_proxy_names,
+                "proxies": clash_resi_names,
                 "url": "http://www.gstatic.com/generate_204",
                 "interval": 300,
                 "tolerance": 50
@@ -195,14 +199,14 @@ def generate_subscriptions(nodes_data, output_dir):
             {
                 "name": "⚡ 故障转移 (Fallback)",
                 "type": "fallback",
-                "proxies": all_proxy_names,
+                "proxies": clash_all_names,
                 "url": "http://www.gstatic.com/generate_204",
                 "interval": 300
             },
             {
                 "name": "🎯 手动选择 (MANUAL)",
                 "type": "select",
-                "proxies": ["🚀 极速原生 (自动优选)", "🏠 住宅家宽 (自动优选)", "⚡ 故障转移 (Fallback)"] + all_proxy_names
+                "proxies": ["🚀 极速原生 (自动优选)", "🏠 住宅家宽 (自动优选)", "⚡ 故障转移 (Fallback)"] + clash_all_names
             }
         ],
         "rules": [
@@ -340,6 +344,28 @@ def generate_subscriptions(nodes_data, output_dir):
             "type": "tuic", "tag": node_names["tuic_resi"], "server": public_ip, "server_port": tuic_port,
             "uuid": resi_uuid, "password": short_id, "congestion_control": "bbr",
             "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "alpn": ["h3"], "insecure": bool(not domain)}
+        },
+        # Outbounds - AnyTLS
+        {
+            "type": "anytls", "tag": node_names["anytls_direct"], "server": public_ip, "server_port": anytls_port,
+            "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+        },
+        {
+            "type": "anytls", "tag": node_names["anytls_resi"], "server": public_ip, "server_port": anytls_port,
+            "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+        },
+        # Outbounds - VMess
+        {
+            "type": "vmess", "tag": node_names["vmess_direct"], "server": public_ip, "server_port": vmess_port,
+            "uuid": direct_uuid, "security": "auto",
+            "transport": {"type": "http", "path": "/vmess", "host": [host]},
+            "tls": {"enabled": bool(domain), "server_name": domain if domain else "", "insecure": bool(not domain)}
+        },
+        {
+            "type": "vmess", "tag": node_names["vmess_resi"], "server": public_ip, "server_port": vmess_port,
+            "uuid": resi_uuid, "security": "auto",
+            "transport": {"type": "http", "path": "/vmess", "host": [host]},
+            "tls": {"enabled": bool(domain), "server_name": domain if domain else "", "insecure": bool(not domain)}
         },
         {"type": "direct", "tag": "direct"},
         {"type": "dns", "tag": "dns-out"}

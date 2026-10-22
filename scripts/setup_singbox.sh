@@ -55,54 +55,58 @@ case "$ARCH" in
     *) echo -e "${RED}不支持的 CPU 架构: ${ARCH}${PLAIN}"; exit 1 ;;
 esac
 
-# 2. 安装/更新 Sing-box 核心 (v1.11.4)
+# 2. 安装/更新 Sing-box 核心
 install_singbox_bin() {
-    local target_ver="1.11.4"
-    if [ -x "$SB_BIN" ]; then
+    if [ -x "$SB_BIN" ] && [ -z "${FORCE_SINGBOX_UPDATE:-}" ]; then
         local cur_ver
         cur_ver=$("$SB_BIN" version 2>/dev/null | awk '/sing-box version/ {print $3}' || echo "")
         if [ -n "$cur_ver" ]; then
-            echo -e "${GREEN}  -> 检测到已安装 Sing-box (${cur_ver})${PLAIN}"
+            echo -e "${GREEN}  -> 检测到已安装 Sing-box (${cur_ver}) (如需升级请运行: ml core)${PLAIN}"
             return 0
         fi
     fi
 
-    echo -e "${YELLOW}  -> 正在获取 Sing-box v${target_ver} (${SB_ARCH})...${PLAIN}"
-    local download_url="https://github.com/SagerNet/sing-box/releases/download/v${target_ver}/sing-box-${target_ver}-linux-${SB_ARCH}.tar.gz"
-    local tmp_tar="/tmp/sing-box-${target_ver}.tar.gz"
-    local tmp_dir="/tmp/sing-box-extract"
-    rm -rf "$tmp_dir" "$tmp_tar"
-    mkdir -p "$tmp_dir"
+    if [ -f "$ROOT_DIR/scripts/manage_core.sh" ]; then
+        bash "$ROOT_DIR/scripts/manage_core.sh" "${SINGBOX_VERSION:-latest}"
+    else
+        local target_ver="${SINGBOX_VERSION:-1.14.3}"
+        echo -e "${YELLOW}  -> 正在获取 Sing-box v${target_ver} (${SB_ARCH})...${PLAIN}"
+        local download_url="https://github.com/SagerNet/sing-box/releases/download/v${target_ver}/sing-box-${target_ver}-linux-${SB_ARCH}.tar.gz"
+        local tmp_tar="/tmp/sing-box-${target_ver}.tar.gz"
+        local tmp_dir="/tmp/sing-box-extract-$$"
+        rm -rf "$tmp_dir" "$tmp_tar"
+        mkdir -p "$tmp_dir"
 
-    local mirrors=(
-        "$download_url"
-        "https://ghfast.top/${download_url}"
-        "https://mirror.ghproxy.com/${download_url}"
-    )
-    local downloaded=0
-    for m in "${mirrors[@]}"; do
-        if curl -fsSL --connect-timeout 8 --max-time 60 "$m" -o "$tmp_tar" 2>/dev/null; then
-            downloaded=1
-            break
+        local mirrors=(
+            "$download_url"
+            "https://ghfast.top/${download_url}"
+            "https://mirror.ghproxy.com/${download_url}"
+        )
+        local downloaded=0
+        for m in "${mirrors[@]}"; do
+            if curl -fsSL --connect-timeout 8 --max-time 60 "$m" -o "$tmp_tar" 2>/dev/null; then
+                downloaded=1
+                break
+            fi
+            echo -e "${YELLOW}  -> 直连或镜像源超时，尝试下一个加速源...${PLAIN}"
+        done
+        if [ "$downloaded" != "1" ]; then
+            echo -e "${RED}错误: Sing-box 下载失败，请检查网络连接！${PLAIN}"
+            exit 1
         fi
-        echo -e "${YELLOW}  -> 直连或镜像源超时，尝试下一个加速源...${PLAIN}"
-    done
-    if [ "$downloaded" != "1" ]; then
-        echo -e "${RED}错误: Sing-box 下载失败，请检查网络连接！${PLAIN}"
-        exit 1
-    fi
 
-    tar -xzf "$tmp_tar" -C "$tmp_dir"
-    local extracted_bin
-    extracted_bin=$(find "$tmp_dir" -type f -name sing-box | head -n 1)
-    if [ -z "$extracted_bin" ]; then
-        echo -e "${RED}错误: 解压 Sing-box 失败。${PLAIN}"
-        exit 1
-    fi
+        tar -xzf "$tmp_tar" -C "$tmp_dir"
+        local extracted_bin
+        extracted_bin=$(find "$tmp_dir" -type f -name sing-box | head -n 1)
+        if [ -z "$extracted_bin" ]; then
+            echo -e "${RED}错误: 解压 Sing-box 失败。${PLAIN}"
+            exit 1
+        fi
 
-    install -m 755 "$extracted_bin" "$SB_BIN"
-    rm -rf "$tmp_dir" "$tmp_tar"
-    echo -e "${GREEN}  -> Sing-box 安装成功: $($SB_BIN version | head -n 1)${PLAIN}"
+        install -m 755 "$extracted_bin" "$SB_BIN"
+        rm -rf "$tmp_dir" "$tmp_tar"
+        echo -e "${GREEN}  -> Sing-box 安装成功: $($SB_BIN version | head -n 1)${PLAIN}"
+    fi
 }
 
 install_singbox_bin

@@ -66,6 +66,8 @@ bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/insta
 ml          # 启动全新交互式双核心管理控制台（支持查看节点、控制服务等）
 ml sub      # 终端快速打印 10 大节点矩阵与 HTTPS 全生态订阅卡片
 ml web      # 查看网页控制面板地址、安全后缀、管理员账号与密码
+ml test     # 全自动节点连通性与健康诊断（排查 -1 超时、端口监听与阻断根因）
+ml core     # Sing-box 内核管理（一键升级最新稳定版、选择历史版本）
 ml egress   # 配置住宅出口模式（内置Aimili家宽池 / 外接第三方商业SOCKS5）
 ml status   # 查看 AimiliVPN 运行状态与当前活跃住宅节点
 ml logs     # 查看 AimiliVPN 实时拨号与隧道日志

@@ -412,12 +412,14 @@ def interactive_menu():
         print(f"  {C_GREEN}[7]{C_RESET} 查看 AimiliVPN 实时日志 ({C_YELLOW}ml logs{C_RESET})")
         print(f"  {C_GREEN}[8]{C_RESET} 重新生成 Sing-box 节点与全生态订阅")
         print(f"  {C_GREEN}[9]{C_RESET} 住宅出口路由配置 (内置Aimili池 / 外接第三方SOCKS5) ({C_YELLOW}ml egress{C_RESET})")
-        print(f"  {C_GREEN}[10]{C_RESET} 原生管理菜单 (修改密码/端口/更新/卸载)")
+        print(f"  {C_GREEN}[10]{C_RESET} 全自动节点连通性与健康诊断 (排查-1超时/端口/阻断) ({C_YELLOW}ml test{C_RESET})")
+        print(f"  {C_GREEN}[11]{C_RESET} Sing-box 内核版本管理 (升级最新稳定版/切换指定版本) ({C_YELLOW}ml core{C_RESET})")
+        print(f"  {C_GREEN}[12]{C_RESET} 原生管理菜单 (修改密码/端口/更新/卸载)")
         print(f"  {C_RED}[0]{C_RESET} 退出控制台")
         print("=" * 60)
 
         try:
-            choice = input(f"{C_BOLD}请选择操作 [0-10]: {C_RESET}").strip()
+            choice = input(f"{C_BOLD}请选择操作 [0-12]: {C_RESET}").strip()
         except (KeyboardInterrupt, EOFError):
             print("\n已退出。")
             break
@@ -460,13 +462,27 @@ def interactive_menu():
             configure_residential_egress()
             input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
         elif choice == "10":
+            diag_script = os.path.join(INSTALL_DIR, "scripts", "check_health.sh")
+            if os.path.exists(diag_script):
+                subprocess.call(["bash", diag_script])
+            else:
+                print(f"{C_RED}未找到诊断脚本: {diag_script}{C_RESET}")
+            input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
+        elif choice == "11":
+            core_script = os.path.join(INSTALL_DIR, "scripts", "manage_core.sh")
+            if os.path.exists(core_script):
+                subprocess.call(["bash", core_script])
+            else:
+                print(f"{C_RED}未找到核心管理脚本: {core_script}{C_RESET}")
+            input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
+        elif choice == "12":
             call_aimili_ml([])
             break
         elif choice in ["0", "q", "quit", "exit"]:
             print("已退出控制台。")
             break
         else:
-            print(f"{C_RED}无效选项，请输入 0 到 10 之间的数字。{C_RESET}")
+            print(f"{C_RED}无效选项，请输入 0 到 12 之间的数字。{C_RESET}")
 
 
 def main():
@@ -480,6 +496,21 @@ def main():
             return
         elif cmd in ["egress", "proxy", "socks5", "resi"]:
             configure_residential_egress()
+            return
+        elif cmd in ["test", "check", "diag", "doctor", "health"]:
+            diag_script = os.path.join(INSTALL_DIR, "scripts", "check_health.sh")
+            if os.path.exists(diag_script):
+                subprocess.call(["bash", diag_script])
+            else:
+                print(f"{C_RED}未找到诊断脚本: {diag_script}{C_RESET}")
+            return
+        elif cmd in ["core", "upgrade-core", "update-core", "kernel"]:
+            core_script = os.path.join(INSTALL_DIR, "scripts", "manage_core.sh")
+            if os.path.exists(core_script):
+                args = sys.argv[2:] if len(sys.argv) > 2 else []
+                subprocess.call(["bash", core_script] + args)
+            else:
+                print(f"{C_RED}未找到核心管理脚本: {core_script}{C_RESET}")
             return
         elif cmd in ["singbox", "sb"]:
             subcmd = sys.argv[2] if len(sys.argv) > 2 else "status"
