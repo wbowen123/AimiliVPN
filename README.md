@@ -8,15 +8,16 @@ Bilingual: [中文](#中文) | [English](#english)
 3. **全协议双栈双出站分流架构 (Dual-Stack Dual-Outbound Matrix)**：单节点支持 **VLESS-Reality、Hysteria 2、TUIC v5、AnyTLS、VMess-xHTTP** 5 大主流协议，全面支持 **IPv4 与 IPv6 原生双栈**，一键下发包含 **“原生 VPS 高速直连”**、**“Aimili 动态住宅家宽穿透”** 与 **“Cloudflare CDN/Argo 优选穿透”** 的 18 节点双栈矩阵完整订阅；
 4. **全生态全格式聚合订阅与终端扫码**：原生输出通用 Base64 (`sub.txt`)、Sing-box 原生 1.10+ JSON (`singbox.json` 内置 Smart-DNS 与分流规则)、Clash Meta / Mihomo (`clash.yaml` 内置自动测速优选与故障转移策略组) 及明文单节点列表 (`nodes.txt`)；部署完成时直接在终端渲染 **ASCII 双色二维码**，手机客户端（小火箭 / Sing-box）扫码一键导入；
 5. **节点健康状态与端口连通性实时自检**：安装结束时全自动对 VLESS-Reality (443)、Hysteria 2 (443)、TUIC (8443)、AnyTLS (8444)、VMess (8445)、Aimili SOCKS5 (8500)、Nginx 订阅 (18443) 展开端口监听与链路状态诊断，即时输出 `[ OK ]` 健康清单；
-6. **Cloudflare 全生态无缝集成**：
+6. **脚本智能更新与配置平滑迁移系统 (`ml update`)**：一键检测 GitHub 仓库最新 Commit 与版本，展示前后版本对比、更新内容日志、文件变动统计与配置零丢失安全说明，支持交互式确认是否升级，升级过程自动备份现有配置并平滑热重载；
+7. **Cloudflare 全生态无缝集成**：
    - ☁️ **Argo 隧道穿透**：支持 Quick Tunnel (免CF账号临时穿透) 与 Named Token 固定隧道，破除 NAT、无公网 IP 限制；
    - ⚡ **CDN 三网优选 IP 测速**：内置电信/联通/移动亚太低延迟 Anycast 测速算法，**仅对 CDN 穿透节点生效，物理直连节点 100% 保持原生千兆 IP 直连**；
    - 📖 **子域名隔离傻瓜向导 (`ml dns`)**：通过直连子域名（灰云）与破墙子域名（橙色小黄云）物理隔离，彻底解决开小黄云拖慢直连与家宽的问题；
-7. **主动探测防御与自动化运维**：
+8. **主动探测防御与自动化运维**：
    - 🎭 **HTML5 高保真本地伪装库**：内置科技云 SaaS、开发者工具箱/计算器、极客博客、2048 小游戏等 4 套可交互模板，完美抵御主动嗅探；
    - 🤖 **Telegram Bot 即时推送**：支持节点订阅一键下发至 TG、公网 IP 漂移告警、核心进程崩溃拉起告警；
    - ⏰ **定时系统自愈与内存清理**：每日凌晨 4 点强制内核缓存释放 (`drop_caches`)、权威 HTTPS 时钟校准、15分钟进程看门狗；
-8. **工业级可靠性加固**：
+9. **工业级可靠性加固**：
    - 🛡️ **GOMEMLIMIT 软内存限制**：针对 128MB/512MB/1GB 等小内存/NAT VPS，动态测算 Go 堆内存配额，根除 OOM 崩溃；
    - 🔄 **事务快照与原子回滚**：配置更新遵循“备份 $\to$ 临时写入 $\to$ sing-box check 预检 $\to$ 原子替换 $\to$ 健康监控 $\to$ 异常秒级回滚”闭环；
    - ⏱️ **高精度时间同步与补偿**：内置 `check_time_sync.sh` 对齐权威 HTTPS 响应头，消除 $>15$ 秒时钟漂移导致的握手超时；
@@ -302,6 +303,7 @@ ml status   # View AimiliVPN status and active residential IP
 ml logs     # Tail real-time VPN dialer and tunnel logs
 ml restart  # Restart AimiliVPN residential daemon
 ml singbox  # Sing-box service management (start/stop/restart/logs/status)
+ml update   # 🔄 Check GitHub updates with diff, changelog, and zero-loss auto-migration
 ```
 
 ---
@@ -353,4 +355,4 @@ Subscription links available on `https://your-domain-or-ip:18443/`:
 
 ---
 
-**Version: V1.4.3 (Sing-box Dual-Outbound Enterprise Full-Stack Suite)**
+**Version: V1.4.4 (Sing-box Dual-Outbound Enterprise Full-Stack Suite)**

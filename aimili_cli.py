@@ -467,12 +467,13 @@ def interactive_menu():
         print(f"  {C_GREEN}[18]{C_RESET} 定时系统自愈与内存深度清理管理 ({C_YELLOW}ml cron{C_RESET})")
         print(f"  {C_GREEN}[19]{C_RESET} 📖 Cloudflare DNS 双栈解析与子域名傻瓜向导 ({C_YELLOW}ml dns{C_RESET})")
         print(f"  {C_GREEN}[20]{C_RESET} 📱 独立打印手机扫码二维码 ({C_YELLOW}ml qr{C_RESET})")
-        print(f"  {C_GREEN}[21]{C_RESET} 原生管理菜单 (修改密码/端口/更新/卸载)")
+        print(f"  {C_GREEN}[21]{C_RESET} 🔄 检查脚本更新与智能平滑升级 ({C_YELLOW}ml update{C_RESET})")
+        print(f"  {C_GREEN}[22]{C_RESET} ⚙️  原生底层管理菜单 (修改密码/端口/卸载等)")
         print(f"  {C_RED}[0]{C_RESET} 退出控制台")
         print("=" * 60)
 
         try:
-            choice = input(f"{C_BOLD}请选择操作 [0-21]: {C_RESET}").strip()
+            choice = input(f"{C_BOLD}请选择操作 [0-22]: {C_RESET}").strip()
         except (KeyboardInterrupt, EOFError):
             print("\n已退出。")
             break
@@ -592,18 +593,31 @@ def interactive_menu():
                 print_terminal_qr(direct_url, "极速原生 Reality 单节点二维码")
             input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
         elif choice == "21":
+            upgrade_script = os.path.join(INSTALL_DIR, "scripts", "upgrade_script.sh")
+            if os.path.exists(upgrade_script):
+                subprocess.call(["bash", upgrade_script])
+            else:
+                print(f"{C_RED}未找到升级脚本: {upgrade_script}{C_RESET}")
+            input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
+        elif choice == "22":
             call_aimili_ml([])
             break
         elif choice in ["0", "q", "quit", "exit"]:
             print("已退出控制台。")
             break
         else:
-            print(f"{C_RED}无效选项，请输入 0 到 21 之间的数字。{C_RESET}")
+            print(f"{C_RED}无效选项，请输入 0 到 22 之间的数字。{C_RESET}")
 
 
 def main():
     if len(sys.argv) > 1:
         cmd = sys.argv[1].lower()
+        if cmd in ["update", "upgrade", "pull", "sync"]:
+            upgrade_script = os.path.join(INSTALL_DIR, "scripts", "upgrade_script.sh")
+            if os.path.exists(upgrade_script):
+                subprocess.call(["bash", upgrade_script])
+            else:
+                print(f"{C_RED}未找到升级脚本: {upgrade_script}{C_RESET}")
         if cmd in ["sub", "subs", "subscription", "subscribe", "node", "nodes", "link", "links"]:
             print_subscription_card()
             return
