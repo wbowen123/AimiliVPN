@@ -33,6 +33,9 @@ check_svc() {
     if systemctl is-active --quiet "$name" 2>/dev/null; then
         echo -e "  * ${desc} (${name}):  ${GREEN}[ 运行中 - ACTIVE ]${PLAIN}"
         return 0
+    elif [ "$(systemctl is-enabled "$name" 2>/dev/null || echo "")" = "disabled" ]; then
+        echo -e "  * ${desc} (${name}):  ${YELLOW}[ 未启用 - DISABLED (当前为极速原生直连模式) ]${PLAIN}"
+        return 0
     else
         local substate
         substate=$(systemctl is-failed "$name" 2>/dev/null || echo "inactive")

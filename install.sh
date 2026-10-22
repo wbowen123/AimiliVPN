@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 set -e
 
+if [ ! -t 0 ] && [ -e /dev/tty ]; then
+    exec < /dev/tty
+fi
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;36m'
 # 系统防火墙（甲骨文镜像自带 iptables INPUT REJECT、ufw、firewalld）放行 AimiliVPN 自己的对外端口：
-# 8443（管理后台）和 80（Let's Encrypt HTTP-01）。8500/8501 只听 127.0.0.1，不放行；18443/443 归九合一，九合一自己放行。
-# iptables 规则带注释 aimilivpn，卸载按注释删；ufw/firewalld 只放行原本没放行的，并记在 /etc/aimilivpn-fw.added，卸载只删记下的。
-AIMILI_FW_PORTS="${AIMILI_FW_PORTS:-8443 80 443 18443}"
+# 8443（管理后台）、80（Let's Encrypt HTTP-01）、443（Reality TCP & Hy2 UDP）、8444（AnyTLS TCP）、8445（VMess TCP）、18443（订阅服务）。
+# UDP 端口：443（Hysteria 2）、8443（TUIC v5）、40000:50000（端口跳跃）。8500/8501 只听 127.0.0.1，不放行。
+AIMILI_FW_PORTS="${AIMILI_FW_PORTS:-8443 80 443 8444 8445 18443}"
+AIMILI_FW_UDP_PORTS="${AIMILI_FW_UDP_PORTS:-443 8443}"
 AIMILI_FW_ADDED="${AIMILI_FW_ADDED:-/etc/aimilivpn-fw.added}"
 aimili_fw_persist() {
     if command -v netfilter-persistent >/dev/null 2>&1; then
@@ -24,21 +29,34 @@ aimili_fw_open() {
         "$ipt" -S INPUT 2>/dev/null | grep -qE '^-P INPUT (DROP|REJECT)|-j (REJECT|DROP)' || continue
         for p in $AIMILI_FW_PORTS; do
             "$ipt" -C INPUT -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 && continue
-            "$ipt" -I INPUT 1 -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 && changed=1 && opened="$opened $ipt:$p"
+            "$ipt" -I INPUT 1 -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 && changed=1 && opened="$opened $ipt:$p(tcp)"
+        done
+        for p in $AIMILI_FW_UDP_PORTS; do
+            "$ipt" -C INPUT -p udp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 && continue
+            "$ipt" -I INPUT 1 -p udp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 && changed=1 && opened="$opened $ipt:$p(udp)"
         done
     done
     [ "$changed" = "1" ] && aimili_fw_persist
     if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
         for p in $AIMILI_FW_PORTS; do
             ufw status 2>/dev/null | grep -qE "^${p}(/tcp)?[[:space:]].*ALLOW" && continue
-            ufw allow "${p}/tcp" comment aimilivpn >/dev/null 2>&1 && echo "ufw ${p}/tcp" >> "$AIMILI_FW_ADDED" && opened="$opened ufw:$p"
+            ufw allow "${p}/tcp" comment aimilivpn >/dev/null 2>&1 && echo "ufw ${p}/tcp" >> "$AIMILI_FW_ADDED" && opened="$opened ufw:$p(tcp)"
+        done
+        for p in $AIMILI_FW_UDP_PORTS; do
+            ufw status 2>/dev/null | grep -qE "^${p}(/udp)?[[:space:]].*ALLOW" && continue
+            ufw allow "${p}/udp" comment aimilivpn >/dev/null 2>&1 && echo "ufw ${p}/udp" >> "$AIMILI_FW_ADDED" && opened="$opened ufw:$p(udp)"
         done
     fi
     if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
         for p in $AIMILI_FW_PORTS; do
             firewall-cmd --query-port="${p}/tcp" >/dev/null 2>&1 && continue
             firewall-cmd --permanent --add-port="${p}/tcp" >/dev/null 2>&1 && firewall-cmd --add-port="${p}/tcp" >/dev/null 2>&1 \
-                && echo "firewalld ${p}/tcp" >> "$AIMILI_FW_ADDED" && opened="$opened firewalld:$p"
+                && echo "firewalld ${p}/tcp" >> "$AIMILI_FW_ADDED" && opened="$opened firewalld:$p(tcp)"
+        done
+        for p in $AIMILI_FW_UDP_PORTS; do
+            firewall-cmd --query-port="${p}/udp" >/dev/null 2>&1 && continue
+            firewall-cmd --permanent --add-port="${p}/udp" >/dev/null 2>&1 && firewall-cmd --add-port="${p}/udp" >/dev/null 2>&1 \
+                && echo "firewalld ${p}/udp" >> "$AIMILI_FW_ADDED" && opened="$opened firewalld:$p(udp)"
         done
     fi
     [ -n "$opened" ] && echo -e "${YELLOW:-}  -> 系统防火墙原本拦截入站，已放行 AimiliVPN 端口（${opened# }），已持久化；卸载时会删掉。${PLAIN:-}"
@@ -582,6 +600,35 @@ if [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -t 0 ]; then
             SINGBOX_CAMOUFLAGE=$(printf '%s' "${SINGBOX_CAMOUFLAGE}" | tr -d '[:space:]')
         fi
     fi
+
+    if [ "${INSTALL_CAMO:-y}" = "y" ]; then
+        echo -e "\n${BOLD}${BLUE}【HTML5 本地高保真伪装网站模板选择】${PLAIN}"
+        echo -e "  * [1] 现代化科技云原生与 SaaS 平台官网 (推荐，极简科技风) [默认直接回车]"
+        echo -e "  * [2] 全功能在线工具箱与极简计算器 (真实可交互、可算数)"
+        echo -e "  * [3] 极简极客技术博客与工程随笔 (学术极客风格)"
+        echo -e "  * [4] 经典 HTML5 2048 益智小游戏 (真实可玩)"
+        read -r -p "请选择伪装模板 [1-4，默认 1]: " CAMO_TEMPLATE_CHOICE
+        CAMO_TEMPLATE_CHOICE="${CAMO_TEMPLATE_CHOICE:-1}"
+    fi
+
+    if [ "${INSTALL_SINGBOX:-y}" = "y" ]; then
+        echo -e "\n${BOLD}${BLUE}【Cloudflare CDN Anycast 三网优选 IP 测速】${PLAIN}"
+        echo -e "  * 作用说明: 仅为走 CDN/Argo 破墙穿透的节点替换为三网最优延迟 IP，绝不影响 VPS 真实物理直连与家宽。"
+        read -r -p "是否在部署时自动执行三网 Anycast 延迟测速并自选最优 IP？[Y/n，默认 Y]: " DO_CF_SPEEDTEST
+        DO_CF_SPEEDTEST=$(echo "${DO_CF_SPEEDTEST:-y}" | tr '[:upper:]' '[:lower:]')
+    fi
+
+    if [ "${INSTALL_BBR:-y}" = "y" ]; then
+        echo -e "\n${BOLD}${BLUE}【Linux 内核 BBR 拥塞控制与 TCP 缓冲区深度调优】${PLAIN}"
+        echo -e "  * 作用说明: 开启 BBR + FQ 队列，调大 TCP 读写缓冲区，显著降低跨国长距离网络 4K 播放丢包卡顿。"
+        read -r -p "是否立即应用内核网络性能调优？[Y/n，默认 Y]: " DO_TUNE_BBR
+        DO_TUNE_BBR=$(echo "${DO_TUNE_BBR:-y}" | tr '[:upper:]' '[:lower:]')
+    fi
+
+    echo -e "\n${BOLD}${BLUE}【定时系统自愈、每日内存深度清理与 15分钟看门狗】${PLAIN}"
+    echo -e "  * 作用说明: 每日 04:00 深度释放内核缓存内存 + HTTPS 时钟校准 + 证书自动续签，每 15 分钟守护进程自愈。"
+    read -r -p "是否立即激活该定时维护看门狗任务？[Y/n，默认 Y]: " DO_SETUP_CRON
+    DO_SETUP_CRON=$(echo "${DO_SETUP_CRON:-y}" | tr '[:upper:]' '[:lower:]')
 fi
 # 域名校验放在问完问题之后、安装任何东西之前。格式须是完整域名（FQDN），且解析到本机公网 IPv4/IPv6。
 # 不通过就红字「域名无效或无法解析」并退出（此时还没装任何东西，无需回滚）。
@@ -1338,6 +1385,14 @@ if [ "${INSTALL_SINGBOX:-}" = "y" ] || [ "${INSTALL_SINGBOX:-}" = "Y" ]; then
             bash "${INSTALL_DIR}/scripts/setup_warp.sh" off >/dev/null 2>&1 || true
         fi
     fi
+
+    # 执行 Cloudflare CDN 三网优选测速
+    if [ "${DO_CF_SPEEDTEST:-y}" != "n" ]; then
+        if [ -f "${INSTALL_DIR}/scripts/cf_speedtest.sh" ]; then
+            echo -e "\n${YELLOW}开始执行 Cloudflare CDN 三网优选 Anycast 测速...${PLAIN}"
+            bash "${INSTALL_DIR}/scripts/cf_speedtest.sh" test || true
+        fi
+    fi
 elif [ "${INSTALL_JIUHEYI:-}" = "y" ] || [ "${INSTALL_JIUHEYI:-}" = "Y" ]; then
     if [ -f /etc/v2ray-agent/xray/xray ] || [ -f /etc/v2ray-agent/sing-box/sing-box ]; then
         echo -e "${YELLOW}九合一已安装，跳过。${PLAIN}"
@@ -1358,6 +1413,25 @@ elif [ "${INSTALL_JIUHEYI:-}" = "y" ] || [ "${INSTALL_JIUHEYI:-}" = "Y" ]; then
             domain="${AIMILIVPN_DOMAIN}" bash /tmp/jiuheyi-install.sh </dev/null
     fi
 fi
+
+# 执行 HTML5 本地高保真伪装站部署
+if [ "${INSTALL_CAMO:-y}" = "y" ] && [ -f "${INSTALL_DIR}/scripts/setup_camouflage.sh" ]; then
+    echo -e "\n${YELLOW}开始部署 HTML5 本地高保真伪装网站...${PLAIN}"
+    bash "${INSTALL_DIR}/scripts/setup_camouflage.sh" "${CAMO_TEMPLATE_CHOICE:-1}" || true
+fi
+
+# 执行 Linux BBR 拥塞控制与 TCP 缓冲区深度调优
+if [ "${DO_TUNE_BBR:-y}" != "n" ] && [ -f "${INSTALL_DIR}/scripts/tune_bbr.sh" ]; then
+    echo -e "\n${YELLOW}开始调优 Linux 内核 TCP 缓冲区与启用 BBR 加速...${PLAIN}"
+    bash "${INSTALL_DIR}/scripts/tune_bbr.sh" || true
+fi
+
+# 执行定时系统自愈与看门狗任务配置
+if [ "${DO_SETUP_CRON:-y}" != "n" ] && [ -f "${INSTALL_DIR}/scripts/setup_cron.sh" ]; then
+    echo -e "\n${YELLOW}开始启用系统定时自愈与看门狗守护任务...${PLAIN}"
+    bash "${INSTALL_DIR}/scripts/setup_cron.sh" install || true
+fi
+
 if command -v nginx >/dev/null 2>&1 && [ -f /etc/nginx/conf.d/aimilivpn-production.conf ]; then
     nginx_8443_up() { ss -ltn 2>/dev/null | grep -qE '[:.]8443[[:space:]]'; }
     if ! nginx_8443_up; then

@@ -618,7 +618,8 @@ def main():
                 subprocess.call(["bash", upgrade_script])
             else:
                 print(f"{C_RED}未找到升级脚本: {upgrade_script}{C_RESET}")
-        if cmd in ["sub", "subs", "subscription", "subscribe", "node", "nodes", "link", "links"]:
+            return
+        elif cmd in ["sub", "subs", "subscription", "subscribe", "node", "nodes", "link", "links"]:
             print_subscription_card()
             return
         elif cmd in ["qr", "qrcode"]:

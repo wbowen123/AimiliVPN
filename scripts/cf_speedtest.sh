@@ -147,8 +147,10 @@ run_speedtest() {
     echo -e "  ${C_GREEN}[3]${C_RESET} 手动输入自定义 Anycast IP (如 104.16.160.10)"
     echo -e "  ${C_GREEN}[4]${C_RESET} 仅查看测速结果，不修改当前配置"
 
-    local apply_choice
-    read -rp "请选择 [1-4，默认 1]: " apply_choice
+    local apply_choice="1"
+    if [ -t 0 ]; then
+        read -rp "请选择 [1-4，默认 1]: " apply_choice
+    fi
     apply_choice="${apply_choice:-1}"
 
     local chosen_ip=""
@@ -199,7 +201,10 @@ run_speedtest() {
     echo -e "${C_GREEN}======================================================================${C_RESET}"
 
     # 询问是否立即刷新 Sing-box 订阅
-    read -rp "是否立即重新生成订阅节点以应用新的优选 IP？[Y/n]: " reload_sub
+    local reload_sub="y"
+    if [ -t 0 ]; then
+        read -rp "是否立即重新生成订阅节点以应用新的优选 IP？[Y/n]: " reload_sub
+    fi
     reload_sub=$(echo "${reload_sub:-y}" | tr '[:upper:]' '[:lower:]')
     if [[ "$reload_sub" != "n" ]]; then
         if [[ -f "${INSTALL_DIR}/scripts/setup_singbox.sh" ]]; then

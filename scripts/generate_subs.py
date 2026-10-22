@@ -1,5 +1,3 @@
-#!/usr/bin/env bash
-# This script is a Python script despite the shebang comment line.
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ==============================================================================

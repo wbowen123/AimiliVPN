@@ -211,8 +211,26 @@ cfg["outbounds"] = outbounds
 # 处理 route rules (严格限定仅对 direct-user 生效，绝对不劫持住宅家宽出口！)
 route = cfg.get("route", {})
 rules = route.get("rules", [])
+# 清理已有的 warp-out 规则
 rules = [r for r in rules if r.get("outbound") != "warp-out"]
 
+# 提取核心固定规则
+priv_rule = {"ip_is_private": True, "outbound": "direct-out"}
+resi_rule = {"auth_user": ["residential-user"], "outbound": "resi-out"}
+direct_rule = {"auth_user": ["direct-user"], "outbound": "direct-out"}
+
+# 清理既有规则中的相同条目以重新标准排序
+cleaned_rules = []
+for r in rules:
+    if r.get("ip_is_private") is True:
+        continue
+    if "residential-user" in r.get("auth_user", []):
+        continue
+    if "direct-user" in r.get("auth_user", []) and not r.get("geosite") and not r.get("network"):
+        continue
+    cleaned_rules.append(r)
+
+warp_rule = None
 if mode.startswith("custom:"):
     raw_sites = mode.split(":", 1)[1]
     sites = [s.strip() for s in raw_sites.split(",") if s.strip()]
@@ -222,14 +240,12 @@ if mode.startswith("custom:"):
             "geosite": sites,
             "outbound": "warp-out"
         }
-        rules.insert(0, warp_rule)
 elif mode == "ai":
     warp_rule = {
         "auth_user": ["direct-user"],
         "geosite": ["openai"],
         "outbound": "warp-out"
     }
-    rules.insert(0, warp_rule)
 elif mode == "stream":
     warp_rule = {
         "auth_user": ["direct-user"],
@@ -241,16 +257,20 @@ elif mode == "stream":
         ],
         "outbound": "warp-out"
     }
-    rules.insert(0, warp_rule)
 elif mode == "global":
     warp_rule = {
         "auth_user": ["direct-user"],
         "network": ["tcp", "udp"],
         "outbound": "warp-out"
     }
-    rules.insert(0, warp_rule)
 
-route["rules"] = rules
+final_rules = [priv_rule, resi_rule]
+if warp_rule:
+    final_rules.append(warp_rule)
+final_rules.extend(cleaned_rules)
+final_rules.append(direct_rule)
+
+route["rules"] = final_rules
 cfg["route"] = route
 
 with open(cfg_file, "w", encoding="utf-8") as f:

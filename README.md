@@ -29,7 +29,7 @@ Bilingual: [中文](#中文) | [English](#english)
 
 ### 1. 系统名称与定位
 
-**Aimili VPN + Sing-box｜全协议双栈双出站节点管理系统 (V1.4.3)**
+**Aimili VPN + Sing-box｜全协议双栈双出站节点管理系统 (V1.4.6)**
 
 系统由三大模块组成：
 - **前端多协议代理矩阵（Sing-box）**：监听 443 (TCP Reality & UDP Hy2)、8443 (UDP TUIC)、8444 (TCP AnyTLS)、8445 (TCP VMess)，通过用户鉴权（`auth_user`）实现毫秒级双出站分流。
@@ -204,7 +204,7 @@ ml singbox  # Sing-box 核心管理（start/stop/restart/logs/status）
 
 ### 1. System Overview
 
-**Aimili VPN + Sing-box | Full-Protocol Dual-Stack Dual-Outbound Matrix (V1.4.3)**
+**Aimili VPN + Sing-box | Full-Protocol Dual-Stack Dual-Outbound Matrix (V1.4.6)**
 
 This system combines the cutting-edge ingress proxy matrix of **Sing-box** with the dynamic residential egress of **AimiliVPN** and an automated multi-format subscription hub:
 - **Ingress Proxy Matrix (Sing-box)**: Delivers 5 major protocols on ports 443 (TCP Reality & UDP Hy2), 8443 (UDP TUIC), 8444 (TCP AnyTLS), and 8445 (TCP VMess). Fully supports **IPv4 & IPv6 dual-stack**, using user-level authentication (`auth_user`) to achieve instantaneous zero-downtime dual-outbound routing.
