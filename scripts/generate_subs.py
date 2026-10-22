@@ -1,8 +1,10 @@
+#!/usr/bin/env bash
+# This script is a Python script despite the shebang comment line.
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ==============================================================================
-# AimiliVPN 全协议订阅生成引擎 (Base64 / Clash Meta / Sing-box / Plaintext)
-# 支持 5 大协议 × 2 种出口 (VPS 原生极速 + Aimili 动态家宽) = 10 大节点矩阵
+# AimiliVPN 全协议与双栈多出站订阅生成引擎 (Base64 / Clash Meta / Sing-box / Plaintext)
+# 支持 IPv4/IPv6 双栈 × 3 种出口模式 (原生极速直连 + Aimili动态家宽 + Cloudflare CDN/Argo)
 # ==============================================================================
 import base64
 import json
@@ -12,8 +14,23 @@ import urllib.parse
 
 def generate_subscriptions(nodes_data, output_dir):
     os.makedirs(output_dir, exist_ok=True)
+    data_dir_path = "/opt/aimilivpn/vpngate_data"
 
     public_ip = nodes_data.get("public_ip", "127.0.0.1")
+    
+    # 自动探测或读取 IPv6
+    public_ipv6 = nodes_data.get("public_ipv6", "")
+    if not public_ipv6:
+        ipv6_file = os.path.join(data_dir_path, "public_ipv6.txt")
+        if os.path.exists(ipv6_file):
+            try:
+                with open(ipv6_file, "r", encoding="utf-8") as f:
+                    ip6 = f.read().strip()
+                    if ":" in ip6 and len(ip6) > 4:
+                        public_ipv6 = ip6
+            except Exception:
+                pass
+
     domain = nodes_data.get("domain", "")
     host = domain if domain else public_ip
     camouflage_sni = nodes_data.get("camouflage_domain", "gateway.icloud.com")
@@ -31,93 +48,263 @@ def generate_subscriptions(nodes_data, output_dir):
     anytls_port = nodes_data.get("anytls_port", 8444)
     vmess_port = nodes_data.get("vmess_port", 8445)
 
-    # 节点命名定义 (明确标注出站属性与传输协议架构)
-    node_names = {
-        "vless_direct": "🚀 [直连-极速] VLESS-Reality【TCP-Vision·原生千兆】",
-        "vless_resi":   "🏠 [住宅-家宽] VLESS-Reality【TCP-Vision·Aimili动态家宽】",
-        "hy2_direct":   "🌪️ [直连-极速] Hysteria 2【H3-UDP-Brutal·暴力抗丢包】",
-        "hy2_resi":     "🏘️ [住宅-家宽] Hysteria 2【H3-UDP-Brutal·恶劣线路家宽加速】",
-        "tuic_direct":  "⚡ [直连-极速] TUIC v5【H3-QUIC-0RTT·秒开首选】",
-        "tuic_resi":    "🏡 [住宅-家宽] TUIC v5【H3-QUIC-0RTT·晚高峰家宽流媒体】",
-        "anytls_direct":"🛡️ [直连-极速] AnyTLS【TCP-Padding·动态包长防探测】",
-        "anytls_resi":  "🌐 [住宅-家宽] AnyTLS【TCP-Padding·特征防探测家宽】",
-        "vmess_direct": "☁️ [直连-极速] VMess-xHTTP【H2/H3-分块·分段防审查】",
-        "vmess_resi":   "🛋️ [住宅-家宽] VMess-xHTTP【H2/H3-分块·动态家宽流】"
-    }
+    # 读取 Cloudflare 优选 IP (仅作用于 CDN 节点)
+    clean_ip = "104.16.160.10"
+    clean_file = os.path.join(data_dir_path, "cf_clean_ip.txt")
+    if os.path.exists(clean_file):
+        try:
+            with open(clean_file, "r", encoding="utf-8") as cff:
+                c = cff.read().strip()
+                if c:
+                    clean_ip = c
+        except Exception:
+            pass
 
-    # --------------------------------------------------------------------------
-    # 1. 生成 10 个标准的通用节点链接
-    # --------------------------------------------------------------------------
-    links = []
-
-    # 1.1 VLESS Reality
-    vless_d = f"vless://{direct_uuid}@{public_ip}:{vless_port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={camouflage_sni}&fp=chrome&pbk={public_key}&sid={short_id}&type=tcp#{urllib.parse.quote(node_names['vless_direct'])}"
-    vless_r = f"vless://{resi_uuid}@{public_ip}:{vless_port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={camouflage_sni}&fp=chrome&pbk={public_key}&sid={short_id}&type=tcp#{urllib.parse.quote(node_names['vless_resi'])}"
-    links.extend([vless_d, vless_r])
-
-    # 1.2 Hysteria 2 (Salamander 混淆 + 端口跳跃)
-    sni_param = f"&sni={domain}" if domain else f"&sni={camouflage_sni}&insecure=1"
-    obfs_param = f"&obfs=salamander&obfs-password={urllib.parse.quote(hy2_obfs)}" if hy2_obfs else ""
-    mport_val = hy2_hop_ports if hy2_hop_ports else hy2_port
-    hy2_d = f"hysteria2://{direct_uuid}@{public_ip}:{hy2_port}?mport={mport_val}{sni_param}{obfs_param}#{urllib.parse.quote(node_names['hy2_direct'])}"
-    hy2_r = f"hysteria2://{resi_uuid}@{public_ip}:{hy2_port}?mport={mport_val}{sni_param}{obfs_param}#{urllib.parse.quote(node_names['hy2_resi'])}"
-    links.extend([hy2_d, hy2_r])
-
-    # 1.3 TUIC v5
-    tuic_sni = domain if domain else camouflage_sni
-    insec_flag = "0" if domain else "1"
-    tuic_d = f"tuic://{direct_uuid}:{short_id}@{public_ip}:{tuic_port}?congestion_control=bbr&alpn=h3&sni={tuic_sni}&allow_insecure={insec_flag}#{urllib.parse.quote(node_names['tuic_direct'])}"
-    tuic_r = f"tuic://{resi_uuid}:{short_id}@{public_ip}:{tuic_port}?congestion_control=bbr&alpn=h3&sni={tuic_sni}&allow_insecure={insec_flag}#{urllib.parse.quote(node_names['tuic_resi'])}"
-    links.extend([tuic_d, tuic_r])
-
-    # 1.4 AnyTLS
-    anytls_d = f"anytls://{direct_uuid}@{public_ip}:{anytls_port}?sni={tuic_sni}&insecure={insec_flag}#{urllib.parse.quote(node_names['anytls_direct'])}"
-    anytls_r = f"anytls://{resi_uuid}@{public_ip}:{anytls_port}?sni={tuic_sni}&insecure={insec_flag}#{urllib.parse.quote(node_names['anytls_resi'])}"
-    links.extend([anytls_d, anytls_r])
-
-    # 1.5 VMess xHTTP
-    vmess_obj_d = {
-        "v": "2", "ps": node_names["vmess_direct"], "add": public_ip, "port": vmess_port,
-        "id": direct_uuid, "aid": 0, "net": "http", "type": "none", "host": host,
-        "path": "/vmess", "tls": "tls" if domain else ""
-    }
-    vmess_obj_r = {
-        "v": "2", "ps": node_names["vmess_resi"], "add": public_ip, "port": vmess_port,
-        "id": resi_uuid, "aid": 0, "net": "http", "type": "none", "host": host,
-        "path": "/vmess", "tls": "tls" if domain else ""
-    }
-    vmess_d = "vmess://" + base64.b64encode(json.dumps(vmess_obj_d).encode("utf-8")).decode("utf-8")
-    vmess_r = "vmess://" + base64.b64encode(json.dumps(vmess_obj_r).encode("utf-8")).decode("utf-8")
-    links.extend([vmess_d, vmess_r])
-
-    # 1.6 Cloudflare Argo 隧道专用穿透节点 (若已激活)
-    data_dir_path = "/opt/aimilivpn/vpngate_data"
+    # 读取 Argo 隧道配置
     argo_file = os.path.join(data_dir_path, "argo_info.json")
+    argo_domain = ""
     if os.path.exists(argo_file):
         try:
             with open(argo_file, "r", encoding="utf-8") as af:
                 argo_data = json.load(af)
                 argo_domain = argo_data.get("domain", "")
-                if argo_domain:
-                    clean_ip = "104.16.160.10"
-                    clean_file = os.path.join(data_dir_path, "cf_clean_ip.txt")
-                    if os.path.exists(clean_file):
-                        try:
-                            with open(clean_file, "r", encoding="utf-8") as cff:
-                                c = cff.read().strip()
-                                if c:
-                                    clean_ip = c
-                        except Exception:
-                            pass
-                    argo_ps = "⛅ [CDN-穿透] VMess-WS-Argo【CDN-Anycast·Cloudflare全球破墙】"
-                    vmess_argo_obj = {
-                        "v": "2", "ps": argo_ps, "add": clean_ip, "port": 443,
-                        "id": direct_uuid, "aid": 0, "net": "ws", "type": "none",
-                        "host": argo_domain, "path": "/vmess-ws", "tls": "tls", "sni": argo_domain
-                    }
-                    links.append("vmess://" + base64.b64encode(json.dumps(vmess_argo_obj).encode("utf-8")).decode("utf-8"))
         except Exception:
             pass
+
+    # --------------------------------------------------------------------------
+    # 1. 节点名称规范体系 (出站属性 + 协议 + 传输特征 + 网络协议栈)
+    # --------------------------------------------------------------------------
+    node_names = {
+        # IPv4 原生直连
+        "vless_direct_v4": "🚀 [直连-极速·IPv4] VLESS-Reality【TCP-Vision·原生千兆】",
+        "vless_resi_v4":   "🏠 [住宅-家宽·IPv4] VLESS-Reality【TCP-Vision·Aimili动态家宽】",
+        "hy2_direct_v4":   "🌪️ [直连-极速·IPv4] Hysteria 2【H3-UDP-Brutal·暴力抗丢包】",
+        "hy2_resi_v4":     "🏘️ [住宅-家宽·IPv4] Hysteria 2【H3-UDP-Brutal·恶劣线路家宽加速】",
+        "tuic_direct_v4":  "⚡ [直连-极速·IPv4] TUIC v5【H3-QUIC-0RTT·秒开首选】",
+        "tuic_resi_v4":    "🏡 [住宅-家宽·IPv4] TUIC v5【H3-QUIC-0RTT·晚高峰家宽流媒体】",
+        "anytls_direct_v4":"🛡️ [直连-极速·IPv4] AnyTLS【TCP-Padding·动态包长防探测】",
+        "anytls_resi_v4":  "🌐 [住宅-家宽·IPv4] AnyTLS【TCP-Padding·特征防探测家宽】",
+        "vmess_direct_v4": "☁️ [直连-极速·IPv4] VMess-xHTTP【H2/H3-分块·分段防审查】",
+        "vmess_resi_v4":   "🛋️ [住宅-家宽·IPv4] VMess-xHTTP【H2/H3-分块·动态家宽流】",
+        # IPv6 原生直连 (若检测到 IPv6)
+        "vless_direct_v6": "🚀 [直连-极速·IPv6] VLESS-Reality【TCP-Vision·原生IPv6】",
+        "hy2_direct_v6":   "🌪️ [直连-极速·IPv6] Hysteria 2【H3-UDP-Brutal·IPv6暴力加速】",
+        "tuic_direct_v6":  "⚡ [直连-极速·IPv6] TUIC v5【H3-QUIC-0RTT·IPv6秒开】",
+        "vmess_direct_v6": "☁️ [直连-极速·IPv6] VMess-xHTTP【H2/H3-分块·原生IPv6】",
+        # Cloudflare CDN / Argo 穿透节点 (明确标注优选 IP 赋能)
+        "vmess_argo_v4":   "⛅ [CDN-优选IP·IPv4] VMess-WS-Argo【Anycast优选·Cloudflare全球破墙】",
+        "vmess_cdn_v4":    "⛅ [CDN-小黄云·IPv4] VMess-xHTTP【Cloudflare-CDN·分块免流破墙】",
+        "vless_cdn_v4":    "⛅ [CDN-小黄云·IPv4] VLESS-WS-TLS【Cloudflare-CDN·小黄云破墙】",
+        "vmess_cdn_v6":    "⛅ [CDN-小黄云·IPv6] VMess-xHTTP【Cloudflare-CDN-IPv6·分块穿透】"
+    }
+
+    links = []
+    clash_proxies = []
+
+    # ==========================================================================
+    # A. 生成标准 IPv4 原生直连与住宅节点
+    # ==========================================================================
+
+    # A1. VLESS Reality IPv4
+    vless_d_v4 = f"vless://{direct_uuid}@{public_ip}:{vless_port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={camouflage_sni}&fp=chrome&pbk={public_key}&sid={short_id}&type=tcp#{urllib.parse.quote(node_names['vless_direct_v4'])}"
+    vless_r_v4 = f"vless://{resi_uuid}@{public_ip}:{vless_port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={camouflage_sni}&fp=chrome&pbk={public_key}&sid={short_id}&type=tcp#{urllib.parse.quote(node_names['vless_resi_v4'])}"
+    links.extend([vless_d_v4, vless_r_v4])
+
+    clash_proxies.append({
+        "name": node_names["vless_direct_v4"], "type": "vless", "server": public_ip, "port": vless_port,
+        "uuid": direct_uuid, "network": "tcp", "tls": True, "udp": True, "flow": "xtls-rprx-vision",
+        "servername": camouflage_sni, "reality-opts": {"public-key": public_key, "short-id": short_id},
+        "client-fingerprint": "chrome"
+    })
+    clash_proxies.append({
+        "name": node_names["vless_resi_v4"], "type": "vless", "server": public_ip, "port": vless_port,
+        "uuid": resi_uuid, "network": "tcp", "tls": True, "udp": True, "flow": "xtls-rprx-vision",
+        "servername": camouflage_sni, "reality-opts": {"public-key": public_key, "short-id": short_id},
+        "client-fingerprint": "chrome"
+    })
+
+    # A2. Hysteria 2 IPv4
+    sni_param = f"&sni={domain}" if domain else f"&sni={camouflage_sni}&insecure=1"
+    obfs_param = f"&obfs=salamander&obfs-password={urllib.parse.quote(hy2_obfs)}" if hy2_obfs else ""
+    mport_val = hy2_hop_ports if hy2_hop_ports else hy2_port
+    hy2_d_v4 = f"hysteria2://{direct_uuid}@{public_ip}:{hy2_port}?mport={mport_val}{sni_param}{obfs_param}#{urllib.parse.quote(node_names['hy2_direct_v4'])}"
+    hy2_r_v4 = f"hysteria2://{resi_uuid}@{public_ip}:{hy2_port}?mport={mport_val}{sni_param}{obfs_param}#{urllib.parse.quote(node_names['hy2_resi_v4'])}"
+    links.extend([hy2_d_v4, hy2_r_v4])
+
+    hy2_p_d = {
+        "name": node_names["hy2_direct_v4"], "type": "hysteria2", "server": public_ip, "port": hy2_port,
+        "password": direct_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
+    }
+    hy2_p_r = {
+        "name": node_names["hy2_resi_v4"], "type": "hysteria2", "server": public_ip, "port": hy2_port,
+        "password": resi_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
+    }
+    if hy2_hop_ports:
+        hy2_p_d["ports"] = str(hy2_hop_ports)
+        hy2_p_r["ports"] = str(hy2_hop_ports)
+    if hy2_obfs:
+        hy2_p_d["obfs"] = "salamander"; hy2_p_d["obfs-password"] = hy2_obfs
+        hy2_p_r["obfs"] = "salamander"; hy2_p_r["obfs-password"] = hy2_obfs
+    clash_proxies.extend([hy2_p_d, hy2_p_r])
+
+    # A3. TUIC v5 IPv4
+    tuic_sni = domain if domain else camouflage_sni
+    insec_flag = "0" if domain else "1"
+    tuic_d_v4 = f"tuic://{direct_uuid}:{short_id}@{public_ip}:{tuic_port}?congestion_control=bbr&alpn=h3&sni={tuic_sni}&allow_insecure={insec_flag}#{urllib.parse.quote(node_names['tuic_direct_v4'])}"
+    tuic_r_v4 = f"tuic://{resi_uuid}:{short_id}@{public_ip}:{tuic_port}?congestion_control=bbr&alpn=h3&sni={tuic_sni}&allow_insecure={insec_flag}#{urllib.parse.quote(node_names['tuic_resi_v4'])}"
+    links.extend([tuic_d_v4, tuic_r_v4])
+
+    clash_proxies.append({
+        "name": node_names["tuic_direct_v4"], "type": "tuic", "server": public_ip, "port": tuic_port,
+        "uuid": direct_uuid, "password": short_id, "alpn": ["h3"], "congestion-controller": "bbr",
+        "sni": tuic_sni, "skip-cert-verify": bool(not domain)
+    })
+    clash_proxies.append({
+        "name": node_names["tuic_resi_v4"], "type": "tuic", "server": public_ip, "port": tuic_port,
+        "uuid": resi_uuid, "password": short_id, "alpn": ["h3"], "congestion-controller": "bbr",
+        "sni": tuic_sni, "skip-cert-verify": bool(not domain)
+    })
+
+    # A4. AnyTLS IPv4
+    anytls_d_v4 = f"anytls://{direct_uuid}@{public_ip}:{anytls_port}?sni={tuic_sni}&insecure={insec_flag}#{urllib.parse.quote(node_names['anytls_direct_v4'])}"
+    anytls_r_v4 = f"anytls://{resi_uuid}@{public_ip}:{anytls_port}?sni={tuic_sni}&insecure={insec_flag}#{urllib.parse.quote(node_names['anytls_resi_v4'])}"
+    links.extend([anytls_d_v4, anytls_r_v4])
+
+    # A5. VMess xHTTP IPv4
+    vmess_obj_d_v4 = {
+        "v": "2", "ps": node_names["vmess_direct_v4"], "add": public_ip, "port": vmess_port,
+        "id": direct_uuid, "aid": 0, "net": "http", "type": "none", "host": host,
+        "path": "/vmess", "tls": "tls" if domain else ""
+    }
+    vmess_obj_r_v4 = {
+        "v": "2", "ps": node_names["vmess_resi_v4"], "add": public_ip, "port": vmess_port,
+        "id": resi_uuid, "aid": 0, "net": "http", "type": "none", "host": host,
+        "path": "/vmess", "tls": "tls" if domain else ""
+    }
+    links.append("vmess://" + base64.b64encode(json.dumps(vmess_obj_d_v4).encode("utf-8")).decode("utf-8"))
+    links.append("vmess://" + base64.b64encode(json.dumps(vmess_obj_r_v4).encode("utf-8")).decode("utf-8"))
+
+    clash_proxies.append({
+        "name": node_names["vmess_direct_v4"], "type": "vmess", "server": public_ip, "port": vmess_port,
+        "uuid": direct_uuid, "alterId": 0, "cipher": "auto", "network": "http",
+        "http-opts": {"path": ["/vmess"], "headers": {"Host": [host]}}, "tls": bool(domain), "skip-cert-verify": bool(not domain)
+    })
+    clash_proxies.append({
+        "name": node_names["vmess_resi_v4"], "type": "vmess", "server": public_ip, "port": vmess_port,
+        "uuid": resi_uuid, "alterId": 0, "cipher": "auto", "network": "http",
+        "http-opts": {"path": ["/vmess"], "headers": {"Host": [host]}}, "tls": bool(domain), "skip-cert-verify": bool(not domain)
+    })
+
+    # ==========================================================================
+    # B. 生成 IPv6 原生直连节点 (若宿主机存在 IPv6)
+    # ==========================================================================
+    if public_ipv6:
+        ip6_url_host = f"[{public_ipv6}]"
+
+        # B1. VLESS Reality IPv6
+        vless_d_v6 = f"vless://{direct_uuid}@{ip6_url_host}:{vless_port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={camouflage_sni}&fp=chrome&pbk={public_key}&sid={short_id}&type=tcp#{urllib.parse.quote(node_names['vless_direct_v6'])}"
+        links.append(vless_d_v6)
+        clash_proxies.append({
+            "name": node_names["vless_direct_v6"], "type": "vless", "server": public_ipv6, "port": vless_port,
+            "uuid": direct_uuid, "network": "tcp", "tls": True, "udp": True, "flow": "xtls-rprx-vision",
+            "servername": camouflage_sni, "reality-opts": {"public-key": public_key, "short-id": short_id},
+            "client-fingerprint": "chrome"
+        })
+
+        # B2. Hysteria 2 IPv6
+        hy2_d_v6 = f"hysteria2://{direct_uuid}@{ip6_url_host}:{hy2_port}?mport={mport_val}{sni_param}{obfs_param}#{urllib.parse.quote(node_names['hy2_direct_v6'])}"
+        links.append(hy2_d_v6)
+        hy2_p_d_v6 = {
+            "name": node_names["hy2_direct_v6"], "type": "hysteria2", "server": public_ipv6, "port": hy2_port,
+            "password": direct_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
+        }
+        if hy2_hop_ports: hy2_p_d_v6["ports"] = str(hy2_hop_ports)
+        if hy2_obfs: hy2_p_d_v6["obfs"] = "salamander"; hy2_p_d_v6["obfs-password"] = hy2_obfs
+        clash_proxies.append(hy2_p_d_v6)
+
+        # B3. TUIC v5 IPv6
+        tuic_d_v6 = f"tuic://{direct_uuid}:{short_id}@{ip6_url_host}:{tuic_port}?congestion_control=bbr&alpn=h3&sni={tuic_sni}&allow_insecure={insec_flag}#{urllib.parse.quote(node_names['tuic_direct_v6'])}"
+        links.append(tuic_d_v6)
+        clash_proxies.append({
+            "name": node_names["tuic_direct_v6"], "type": "tuic", "server": public_ipv6, "port": tuic_port,
+            "uuid": direct_uuid, "password": short_id, "alpn": ["h3"], "congestion-controller": "bbr",
+            "sni": tuic_sni, "skip-cert-verify": bool(not domain)
+        })
+
+        # B4. VMess xHTTP IPv6
+        vmess_obj_d_v6 = {
+            "v": "2", "ps": node_names["vmess_direct_v6"], "add": public_ipv6, "port": vmess_port,
+            "id": direct_uuid, "aid": 0, "net": "http", "type": "none", "host": host,
+            "path": "/vmess", "tls": "tls" if domain else ""
+        }
+        links.append("vmess://" + base64.b64encode(json.dumps(vmess_obj_d_v6).encode("utf-8")).decode("utf-8"))
+        clash_proxies.append({
+            "name": node_names["vmess_direct_v6"], "type": "vmess", "server": public_ipv6, "port": vmess_port,
+            "uuid": direct_uuid, "alterId": 0, "cipher": "auto", "network": "http",
+            "http-opts": {"path": ["/vmess"], "headers": {"Host": [host]}}, "tls": bool(domain), "skip-cert-verify": bool(not domain)
+        })
+
+    # ==========================================================================
+    # C. 生成 Cloudflare CDN 与 Argo 穿透节点 (注入 Anycast 优选 IP)
+    # ==========================================================================
+    cdn_target_domain = argo_domain if argo_domain else (f"cdn.{domain}" if domain else "")
+
+    if cdn_target_domain or domain:
+        active_cdn_host = cdn_target_domain if cdn_target_domain else domain
+
+        # C1. VMess-WS-Argo (使用三网优选 Anycast IP，SNI为Argo/CDN域名)
+        vmess_argo_obj = {
+            "v": "2", "ps": node_names["vmess_argo_v4"], "add": clean_ip, "port": 443,
+            "id": direct_uuid, "aid": 0, "net": "ws", "type": "none",
+            "host": active_cdn_host, "path": "/vmess-ws", "tls": "tls", "sni": active_cdn_host
+        }
+        links.append("vmess://" + base64.b64encode(json.dumps(vmess_argo_obj).encode("utf-8")).decode("utf-8"))
+        clash_proxies.append({
+            "name": node_names["vmess_argo_v4"], "type": "vmess", "server": clean_ip, "port": 443,
+            "uuid": direct_uuid, "alterId": 0, "cipher": "auto", "network": "ws",
+            "ws-opts": {"path": "/vmess-ws", "headers": {"Host": active_cdn_host}},
+            "tls": True, "servername": active_cdn_host, "skip-cert-verify": False
+        })
+
+        # C2. VMess-xHTTP CDN (开启小黄云，走 Cloudflare 443)
+        vmess_cdn_obj = {
+            "v": "2", "ps": node_names["vmess_cdn_v4"], "add": clean_ip, "port": 443,
+            "id": direct_uuid, "aid": 0, "net": "http", "type": "none",
+            "host": active_cdn_host, "path": "/vmess", "tls": "tls", "sni": active_cdn_host
+        }
+        links.append("vmess://" + base64.b64encode(json.dumps(vmess_cdn_obj).encode("utf-8")).decode("utf-8"))
+        clash_proxies.append({
+            "name": node_names["vmess_cdn_v4"], "type": "vmess", "server": clean_ip, "port": 443,
+            "uuid": direct_uuid, "alterId": 0, "cipher": "auto", "network": "http",
+            "http-opts": {"path": ["/vmess"], "headers": {"Host": [active_cdn_host]}},
+            "tls": True, "servername": active_cdn_host, "skip-cert-verify": False
+        })
+
+        # C3. VLESS-WS-TLS CDN (经典小黄云 WebSocket 破墙)
+        vless_cdn_link = f"vless://{direct_uuid}@{clean_ip}:443?encryption=none&security=tls&sni={active_cdn_host}&type=ws&host={active_cdn_host}&path=%2Fvless-ws#{urllib.parse.quote(node_names['vless_cdn_v4'])}"
+        links.append(vless_cdn_link)
+        clash_proxies.append({
+            "name": node_names["vless_cdn_v4"], "type": "vless", "server": clean_ip, "port": 443,
+            "uuid": direct_uuid, "network": "ws", "tls": True, "udp": True,
+            "servername": active_cdn_host, "ws-opts": {"path": "/vless-ws", "headers": {"Host": active_cdn_host}},
+            "client-fingerprint": "chrome"
+        })
+
+        # C4. IPv6 CDN 节点 (Cloudflare Anycast IPv6 优选)
+        if public_ipv6:
+            cf_ipv6_clean = "2606:4700::6810:a00a"
+            vmess_cdn_v6_obj = {
+                "v": "2", "ps": node_names["vmess_cdn_v6"], "add": cf_ipv6_clean, "port": 443,
+                "id": direct_uuid, "aid": 0, "net": "http", "type": "none",
+                "host": active_cdn_host, "path": "/vmess", "tls": "tls", "sni": active_cdn_host
+            }
+            links.append("vmess://" + base64.b64encode(json.dumps(vmess_cdn_v6_obj).encode("utf-8")).decode("utf-8"))
+            clash_proxies.append({
+                "name": node_names["vmess_cdn_v6"], "type": "vmess", "server": cf_ipv6_clean, "port": 443,
+                "uuid": direct_uuid, "alterId": 0, "cipher": "auto", "network": "http",
+                "http-opts": {"path": ["/vmess"], "headers": {"Host": [active_cdn_host]}},
+                "tls": True, "servername": active_cdn_host, "skip-cert-verify": False
+            })
 
     # --------------------------------------------------------------------------
     # 2. 输出 Base64 订阅文件 (sub.txt) 与 明文列表 (nodes.txt)
@@ -134,71 +321,58 @@ def generate_subscriptions(nodes_data, output_dir):
     # --------------------------------------------------------------------------
     # 3. 输出 Clash Meta / Mihomo 格式订阅 (clash.yaml)
     # --------------------------------------------------------------------------
-    direct_proxy_names = [node_names["vless_direct"], node_names["hy2_direct"], node_names["tuic_direct"], node_names["anytls_direct"], node_names["vmess_direct"]]
-    resi_proxy_names = [node_names["vless_resi"], node_names["hy2_resi"], node_names["tuic_resi"], node_names["anytls_resi"], node_names["vmess_resi"]]
-    all_proxy_names = direct_proxy_names + resi_proxy_names
+    clash_direct_names = [p["name"] for p in clash_proxies if "直连" in p["name"]]
+    clash_resi_names = [p["name"] for p in clash_proxies if "住宅" in p["name"]]
+    clash_cdn_names = [p["name"] for p in clash_proxies if "CDN" in p["name"]]
+    clash_all_names = [p["name"] for p in clash_proxies]
 
-    hy2_proxy_d = {
-        "name": node_names["hy2_direct"], "type": "hysteria2", "server": public_ip, "port": hy2_port,
-        "password": direct_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
-    }
-    hy2_proxy_r = {
-        "name": node_names["hy2_resi"], "type": "hysteria2", "server": public_ip, "port": hy2_port,
-        "password": resi_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
-    }
-    if hy2_hop_ports:
-        hy2_proxy_d["ports"] = str(hy2_hop_ports)
-        hy2_proxy_r["ports"] = str(hy2_hop_ports)
-    if hy2_obfs:
-        hy2_proxy_d["obfs"] = "salamander"
-        hy2_proxy_d["obfs-password"] = hy2_obfs
-        hy2_proxy_r["obfs"] = "salamander"
-        hy2_proxy_r["obfs-password"] = hy2_obfs
-
-    clash_proxies = [
-        # VLESS Reality Direct & Resi
+    proxy_groups = [
         {
-            "name": node_names["vless_direct"], "type": "vless", "server": public_ip, "port": vless_port,
-            "uuid": direct_uuid, "network": "tcp", "tls": True, "udp": True, "flow": "xtls-rprx-vision",
-            "servername": camouflage_sni, "reality-opts": {"public-key": public_key, "short-id": short_id},
-            "client-fingerprint": "chrome"
+            "name": "🚀 极速原生 (自动优选)",
+            "type": "url-test",
+            "proxies": clash_direct_names if clash_direct_names else clash_all_names,
+            "url": "http://www.gstatic.com/generate_204",
+            "interval": 300,
+            "tolerance": 50
         },
         {
-            "name": node_names["vless_resi"], "type": "vless", "server": public_ip, "port": vless_port,
-            "uuid": resi_uuid, "network": "tcp", "tls": True, "udp": True, "flow": "xtls-rprx-vision",
-            "servername": camouflage_sni, "reality-opts": {"public-key": public_key, "short-id": short_id},
-            "client-fingerprint": "chrome"
-        },
-        # Hysteria 2 Direct & Resi
-        hy2_proxy_d,
-        hy2_proxy_r,
-        # TUIC v5 Direct & Resi
-        {
-            "name": node_names["tuic_direct"], "type": "tuic", "server": public_ip, "port": tuic_port,
-            "uuid": direct_uuid, "password": short_id, "alpn": ["h3"], "congestion-controller": "bbr",
-            "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
-        },
-        {
-            "name": node_names["tuic_resi"], "type": "tuic", "server": public_ip, "port": tuic_port,
-            "uuid": resi_uuid, "password": short_id, "alpn": ["h3"], "congestion-controller": "bbr",
-            "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
-        },
-        # VMess Direct & Resi
-        {
-            "name": node_names["vmess_direct"], "type": "vmess", "server": public_ip, "port": vmess_port,
-            "uuid": direct_uuid, "alterId": 0, "cipher": "auto", "network": "http",
-            "http-opts": {"path": ["/vmess"], "headers": {"Host": [host]}}, "tls": bool(domain), "skip-cert-verify": bool(not domain)
-        },
-        {
-            "name": node_names["vmess_resi"], "type": "vmess", "server": public_ip, "port": vmess_port,
-            "uuid": resi_uuid, "alterId": 0, "cipher": "auto", "network": "http",
-            "http-opts": {"path": ["/vmess"], "headers": {"Host": [host]}}, "tls": bool(domain), "skip-cert-verify": bool(not domain)
+            "name": "🏠 住宅家宽 (自动优选)",
+            "type": "url-test",
+            "proxies": clash_resi_names if clash_resi_names else clash_all_names,
+            "url": "http://www.gstatic.com/generate_204",
+            "interval": 300,
+            "tolerance": 50
         }
     ]
 
-    clash_direct_names = [p["name"] for p in clash_proxies if "直连" in p["name"] or "原生" in p["name"]]
-    clash_resi_names = [p["name"] for p in clash_proxies if "住宅" in p["name"] or "家宽" in p["name"]]
-    clash_all_names = [p["name"] for p in clash_proxies]
+    if clash_cdn_names:
+        proxy_groups.append({
+            "name": "⛅ CDN破墙 (自动优选)",
+            "type": "url-test",
+            "proxies": clash_cdn_names,
+            "url": "http://www.gstatic.com/generate_204",
+            "interval": 300,
+            "tolerance": 50
+        })
+
+    group_select_candidates = ["🚀 极速原生 (自动优选)", "🏠 住宅家宽 (自动优选)"]
+    if clash_cdn_names:
+        group_select_candidates.append("⛅ CDN破墙 (自动优选)")
+    group_select_candidates.append("⚡ 故障转移 (Fallback)")
+
+    proxy_groups.append({
+        "name": "⚡ 故障转移 (Fallback)",
+        "type": "fallback",
+        "proxies": clash_all_names,
+        "url": "http://www.gstatic.com/generate_204",
+        "interval": 300
+    })
+
+    proxy_groups.append({
+        "name": "🎯 手动选择 (MANUAL)",
+        "type": "select",
+        "proxies": group_select_candidates + clash_all_names
+    })
 
     clash_config = {
         "port": 7890,
@@ -208,36 +382,7 @@ def generate_subscriptions(nodes_data, output_dir):
         "log-level": "info",
         "unified-delay": True,
         "proxies": clash_proxies,
-        "proxy-groups": [
-            {
-                "name": "🚀 极速原生 (自动优选)",
-                "type": "url-test",
-                "proxies": clash_direct_names,
-                "url": "http://www.gstatic.com/generate_204",
-                "interval": 300,
-                "tolerance": 50
-            },
-            {
-                "name": "🏠 住宅家宽 (自动优选)",
-                "type": "url-test",
-                "proxies": clash_resi_names,
-                "url": "http://www.gstatic.com/generate_204",
-                "interval": 300,
-                "tolerance": 50
-            },
-            {
-                "name": "⚡ 故障转移 (Fallback)",
-                "type": "fallback",
-                "proxies": clash_all_names,
-                "url": "http://www.gstatic.com/generate_204",
-                "interval": 300
-            },
-            {
-                "name": "🎯 手动选择 (MANUAL)",
-                "type": "select",
-                "proxies": ["🚀 极速原生 (自动优选)", "🏠 住宅家宽 (自动优选)", "⚡ 故障转移 (Fallback)"] + clash_all_names
-            }
-        ],
+        "proxy-groups": proxy_groups,
         "rules": [
             "DOMAIN-SUFFIX,local,DIRECT",
             "IP-CIDR,127.0.0.0/8,DIRECT",
@@ -305,12 +450,33 @@ def generate_subscriptions(nodes_data, output_dir):
     # --------------------------------------------------------------------------
     # 4. 输出 Sing-box 客户端开箱即用完整配置 (singbox.json)
     # --------------------------------------------------------------------------
+    sb_outbounds_list = []
+
+    # 构造客户端出站
+    sb_outbounds_list.append({
+        "type": "vless", "tag": node_names["vless_direct_v4"], "server": public_ip, "server_port": vless_port,
+        "uuid": direct_uuid, "flow": "xtls-rprx-vision", "network": "tcp",
+        "tls": {
+            "enabled": True, "server_name": camouflage_sni, "reality": {"enabled": True, "public_key": public_key, "short_id": short_id},
+            "utls": {"enabled": True, "fingerprint": "chrome"}
+        }
+    })
+    sb_outbounds_list.append({
+        "type": "vless", "tag": node_names["vless_resi_v4"], "server": public_ip, "server_port": vless_port,
+        "uuid": resi_uuid, "flow": "xtls-rprx-vision", "network": "tcp",
+        "tls": {
+            "enabled": True, "server_name": camouflage_sni, "reality": {"enabled": True, "public_key": public_key, "short_id": short_id},
+            "utls": {"enabled": True, "fingerprint": "chrome"}
+        }
+    })
+
+    # Hysteria 2
     hy2_sb_d = {
-        "type": "hysteria2", "tag": node_names["hy2_direct"], "server": public_ip, "server_port": hy2_port,
+        "type": "hysteria2", "tag": node_names["hy2_direct_v4"], "server": public_ip, "server_port": hy2_port,
         "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
     }
     hy2_sb_r = {
-        "type": "hysteria2", "tag": node_names["hy2_resi"], "server": public_ip, "server_port": hy2_port,
+        "type": "hysteria2", "tag": node_names["hy2_resi_v4"], "server": public_ip, "server_port": hy2_port,
         "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
     }
     if hy2_hop_ports:
@@ -320,85 +486,112 @@ def generate_subscriptions(nodes_data, output_dir):
     if hy2_obfs:
         hy2_sb_d["obfs"] = {"type": "salamander", "password": hy2_obfs}
         hy2_sb_r["obfs"] = {"type": "salamander", "password": hy2_obfs}
+    sb_outbounds_list.extend([hy2_sb_d, hy2_sb_r])
 
-    sb_outbounds = [
+    # TUIC v5
+    sb_outbounds_list.append({
+        "type": "tuic", "tag": node_names["tuic_direct_v4"], "server": public_ip, "server_port": tuic_port,
+        "uuid": direct_uuid, "password": short_id, "congestion_controller": "bbr",
+        "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": bool(not domain)}
+    })
+    sb_outbounds_list.append({
+        "type": "tuic", "tag": node_names["tuic_resi_v4"], "server": public_ip, "server_port": tuic_port,
+        "uuid": resi_uuid, "password": short_id, "congestion_controller": "bbr",
+        "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": bool(not domain)}
+    })
+
+    # AnyTLS
+    sb_outbounds_list.append({
+        "type": "anytls", "tag": node_names["anytls_direct_v4"], "server": public_ip, "server_port": anytls_port,
+        "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+    })
+    sb_outbounds_list.append({
+        "type": "anytls", "tag": node_names["anytls_resi_v4"], "server": public_ip, "server_port": anytls_port,
+        "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+    })
+
+    # VMess
+    sb_outbounds_list.append({
+        "type": "vmess", "tag": node_names["vmess_direct_v4"], "server": public_ip, "server_port": vmess_port,
+        "uuid": direct_uuid, "security": "auto",
+        "transport": {"type": "http", "path": "/vmess", "host": [host]},
+        "tls": {"enabled": bool(domain), "server_name": domain if domain else "", "insecure": bool(not domain)}
+    })
+    sb_outbounds_list.append({
+        "type": "vmess", "tag": node_names["vmess_resi_v4"], "server": public_ip, "server_port": vmess_port,
+        "uuid": resi_uuid, "security": "auto",
+        "transport": {"type": "http", "path": "/vmess", "host": [host]},
+        "tls": {"enabled": bool(domain), "server_name": domain if domain else "", "insecure": bool(not domain)}
+    })
+
+    # 追加 CDN 节点到 Singbox 客户端配置
+    if cdn_target_domain or domain:
+        active_cdn_host = cdn_target_domain if cdn_target_domain else domain
+        sb_outbounds_list.append({
+            "type": "vmess", "tag": node_names["vmess_argo_v4"], "server": clean_ip, "server_port": 443,
+            "uuid": direct_uuid, "security": "auto",
+            "transport": {"type": "ws", "path": "/vmess-ws", "headers": {"Host": active_cdn_host}},
+            "tls": {"enabled": True, "server_name": active_cdn_host}
+        })
+        sb_outbounds_list.append({
+            "type": "vmess", "tag": node_names["vmess_cdn_v4"], "server": clean_ip, "server_port": 443,
+            "uuid": direct_uuid, "security": "auto",
+            "transport": {"type": "http", "path": "/vmess", "host": [active_cdn_host]},
+            "tls": {"enabled": True, "server_name": active_cdn_host}
+        })
+        sb_outbounds_list.append({
+            "type": "vless", "tag": node_names["vless_cdn_v4"], "server": clean_ip, "server_port": 443,
+            "uuid": direct_uuid,
+            "transport": {"type": "ws", "path": "/vless-ws", "headers": {"Host": active_cdn_host}},
+            "tls": {"enabled": True, "server_name": active_cdn_host}
+        })
+
+    sb_all_tags = [o["tag"] for o in sb_outbounds_list]
+    sb_direct_tags = [t for t in sb_all_tags if "直连" in t]
+    sb_resi_tags = [t for t in sb_all_tags if "住宅" in t]
+    sb_cdn_tags = [t for t in sb_all_tags if "CDN" in t]
+
+    singbox_selectors = [
         {
             "type": "selector",
             "tag": "🎯 手动选择",
-            "outbounds": ["🚀 极速原生 (自动优选)", "🏠 住宅家宽 (自动优选)", "⚡ 故障转移"] + all_proxy_names,
+            "outbounds": ["🚀 极速原生 (自动优选)", "🏠 住宅家宽 (自动优选)"] + (["⛅ CDN破墙 (自动优选)"] if sb_cdn_tags else []) + ["⚡ 故障转移"] + sb_all_tags,
             "default": "🚀 极速原生 (自动优选)"
         },
         {
             "type": "urltest",
             "tag": "🚀 极速原生 (自动优选)",
-            "outbounds": direct_proxy_names,
+            "outbounds": sb_direct_tags if sb_direct_tags else sb_all_tags,
             "url": "https://www.gstatic.com/generate_204",
             "interval": "3m"
         },
         {
             "type": "urltest",
             "tag": "🏠 住宅家宽 (自动优选)",
-            "outbounds": resi_proxy_names,
+            "outbounds": sb_resi_tags if sb_resi_tags else sb_all_tags,
             "url": "https://www.gstatic.com/generate_204",
             "interval": "3m"
-        },
-        {
-            "type": "urltest",
-            "tag": "⚡ 故障转移",
-            "outbounds": all_proxy_names,
-            "url": "https://www.gstatic.com/generate_204",
-            "interval": "3m"
-        },
-        # Outbounds - VLESS
-        {
-            "type": "vless", "tag": node_names["vless_direct"], "server": public_ip, "server_port": vless_port,
-            "uuid": direct_uuid, "flow": "xtls-rprx-vision", "network": "tcp",
-            "tls": {"enabled": True, "server_name": camouflage_sni, "reality": {"enabled": True, "public_key": public_key, "short_id": short_id}, "utls": {"enabled": True, "fingerprint": "chrome"}}
-        },
-        {
-            "type": "vless", "tag": node_names["vless_resi"], "server": public_ip, "server_port": vless_port,
-            "uuid": resi_uuid, "flow": "xtls-rprx-vision", "network": "tcp",
-            "tls": {"enabled": True, "server_name": camouflage_sni, "reality": {"enabled": True, "public_key": public_key, "short_id": short_id}, "utls": {"enabled": True, "fingerprint": "chrome"}}
-        },
-        # Outbounds - Hysteria 2 (Salamander 混淆 + 端口跳跃)
-        hy2_sb_d,
-        hy2_sb_r,
-        # Outbounds - TUIC
-        {
-            "type": "tuic", "tag": node_names["tuic_direct"], "server": public_ip, "server_port": tuic_port,
-            "uuid": direct_uuid, "password": short_id, "congestion_control": "bbr",
-            "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "alpn": ["h3"], "insecure": bool(not domain)}
-        },
-        {
-            "type": "tuic", "tag": node_names["tuic_resi"], "server": public_ip, "server_port": tuic_port,
-            "uuid": resi_uuid, "password": short_id, "congestion_control": "bbr",
-            "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "alpn": ["h3"], "insecure": bool(not domain)}
-        },
-        # Outbounds - AnyTLS
-        {
-            "type": "anytls", "tag": node_names["anytls_direct"], "server": public_ip, "server_port": anytls_port,
-            "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
-        },
-        {
-            "type": "anytls", "tag": node_names["anytls_resi"], "server": public_ip, "server_port": anytls_port,
-            "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
-        },
-        # Outbounds - VMess
-        {
-            "type": "vmess", "tag": node_names["vmess_direct"], "server": public_ip, "server_port": vmess_port,
-            "uuid": direct_uuid, "security": "auto",
-            "transport": {"type": "http", "path": "/vmess", "host": [host]},
-            "tls": {"enabled": bool(domain), "server_name": domain if domain else "", "insecure": bool(not domain)}
-        },
-        {
-            "type": "vmess", "tag": node_names["vmess_resi"], "server": public_ip, "server_port": vmess_port,
-            "uuid": resi_uuid, "security": "auto",
-            "transport": {"type": "http", "path": "/vmess", "host": [host]},
-            "tls": {"enabled": bool(domain), "server_name": domain if domain else "", "insecure": bool(not domain)}
-        },
-        {"type": "direct", "tag": "direct"},
-        {"type": "dns", "tag": "dns-out"}
+        }
     ]
+
+    if sb_cdn_tags:
+        singbox_selectors.append({
+            "type": "urltest",
+            "tag": "⛅ CDN破墙 (自动优选)",
+            "outbounds": sb_cdn_tags,
+            "url": "https://www.gstatic.com/generate_204",
+            "interval": "3m"
+        })
+
+    singbox_selectors.append({
+        "type": "urltest",
+        "tag": "⚡ 故障转移",
+        "outbounds": sb_all_tags,
+        "url": "https://www.gstatic.com/generate_204",
+        "interval": "3m"
+    })
+
+    sb_final_outbounds = singbox_selectors + sb_outbounds_list + [{"type": "direct", "tag": "direct"}, {"type": "dns", "tag": "dns-out"}]
 
     sb_client_config = {
         "log": {"level": "warn", "timestamp": True},
@@ -418,7 +611,7 @@ def generate_subscriptions(nodes_data, output_dir):
         "inbounds": [
             {"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 2080}
         ],
-        "outbounds": sb_outbounds,
+        "outbounds": sb_final_outbounds,
         "route": {
             "rules": [
                 {"protocol": "dns", "outbound": "dns-out"},
@@ -449,4 +642,4 @@ if __name__ == "__main__":
     with open(nodes_file, "r", encoding="utf-8") as f:
         data = json.load(f)
     res = generate_subscriptions(data, out_dir)
-    print(f"成功生成 {res['nodes_count']} 个多协议节点订阅文件！")
+    print(f"成功生成 {res['nodes_count']} 个多协议双栈节点订阅文件！")

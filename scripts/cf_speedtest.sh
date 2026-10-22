@@ -136,12 +136,18 @@ run_speedtest() {
         fi
     done <<< "${sorted_results}"
 
-    echo "----------------------------------------------------------------------"
     echo -e "🏆 综合测速最高得分最优 IP: ${C_BOLD}${C_GREEN}${best_ip}${C_RESET}"
     echo "${best_ip}" > "${CF_IP_FILE}"
     log_info "已将最优 IP [${best_ip}] 保存至 ${CF_IP_FILE}"
-    echo -e "💡 客户端使用说明: 节点【连接地址/Address】使用此优选IP，【伪装域名/SNI/Host】保持您的域名，"
-    echo -e "   即可直连最近的 Cloudflare 香港/日本机房并专网回源，彻底消除晚高峰丢包！"
+    echo ""
+    echo -e "  ${C_BOLD}【优选 Anycast IP 作用范围与目标节点清单】${C_RESET}"
+    echo -e "  ${C_GREEN}● 生效节点 (自动替换连接地址为优选IP):${C_RESET}"
+    echo -e "    1. ⛅ [CDN-优选IP·IPv4] VMess-WS-Argo【Anycast优选·Cloudflare全球破墙】"
+    echo -e "    2. ⛅ [CDN-小黄云·IPv4] VMess-xHTTP【Cloudflare-CDN·分块免流破墙】"
+    echo -e "    3. ⛅ [CDN-小黄云·IPv4] VLESS-WS-TLS【Cloudflare-CDN·小黄云破墙】"
+    echo -e "  ${C_YELLOW}● 绝不生效节点 (100% 保持 VPS 真实物理 IP 直连):${C_RESET}"
+    echo -e "    - 所有 🚀 [直连-极速] 节点 (Reality, Hy2, TUIC, AnyTLS, xHTTP-直连)"
+    echo -e "    - 所有 🏠 [住宅-家宽] 节点 (直连入站 + Aimili 动态家宽出口)"
     echo -e "${C_GREEN}======================================================================${C_RESET}"
 }
 
@@ -180,8 +186,8 @@ show_current() {
     else
         echo -e "  当前保存优选 IP: 未测速 (默认推荐 104.16.160.10)"
     fi
-    echo -e "  覆盖范围: 仅对 Cloudflare CDN / Argo 代理节点生效"
-    echo -e "  物理直连状态: 保持 VPS 真实 IP 原生直连，不受任何影响"
+    echo -e "  适用范围: 仅应用于带有 ⛅ [CDN-优选IP] 或 [CDN-小黄云] 的穿透节点"
+    echo -e "  直连/住宅状态: 100% 保持 VPS 真实物理 IP 直连，不受任何改动影响"
     echo -e "${C_GREEN}======================================================================${C_RESET}"
 }
 

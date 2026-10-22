@@ -202,18 +202,25 @@ if mode != "off":
 
 cfg["outbounds"] = outbounds
 
-# 处理 route rules
+# 处理 route rules (严格限定仅对 direct-user 生效，绝对不劫持住宅家宽出口！)
 route = cfg.get("route", {})
 rules = route.get("rules", [])
 rules = [r for r in rules if r.get("outbound") != "warp-out"]
 
-if mode == "stream":
+if mode == "ai":
     warp_rule = {
+        "auth_user": ["direct-user"],
+        "geosite": ["openai"],
+        "outbound": "warp-out"
+    }
+    rules.insert(0, warp_rule)
+elif mode == "stream":
+    warp_rule = {
+        "auth_user": ["direct-user"],
         "geosite": [
             "openai",
             "netflix",
             "disney",
-            "youtube",
             "tiktok"
         ],
         "outbound": "warp-out"
@@ -221,6 +228,7 @@ if mode == "stream":
     rules.insert(0, warp_rule)
 elif mode == "global":
     warp_rule = {
+        "auth_user": ["direct-user"],
         "network": ["tcp", "udp"],
         "outbound": "warp-out"
     }
@@ -265,7 +273,7 @@ check_unlock_status() {
     if [[ "${warp_on}" =~ "warp=on" || "${warp_on}" =~ "warp=plus" ]]; then
         echo -e "${C_GREEN}开启 (${warp_on})${C_RESET}"
     else
-        echo -e "${C_YELLOW}未全局劫持 (Sing-box 原生精准分流模式，仅目标网站走 WARP)${C_RESET}"
+        echo -e "${C_YELLOW}用户态精准分流模式 (仅针对直连节点的指定域名生效，绝不影响住宅节点)${C_RESET}"
     fi
 
     echo -ne "  检测 ChatGPT / OpenAI 解锁: "
@@ -301,40 +309,47 @@ menu() {
         echo -e "${C_GREEN}======================================================================${C_RESET}"
         echo -e "${C_BOLD}${C_GREEN}       🛡️ AimiliVPN - Cloudflare WARP 双栈网络与流媒体解锁${C_RESET}"
         echo -e "${C_GREEN}======================================================================${C_RESET}"
-        echo -e "  ${C_GREEN}[1]${C_RESET} 🌟 开启智能 AI 与流媒体精准分流 (推荐: Netflix/OpenAI/TikTok走WARP, 其余千兆直连)"
-        echo -e "  ${C_GREEN}[2]${C_RESET} 🌐 开启全局出站走 WARP (所有外网访问全部经由 Cloudflare Anycast)"
-        echo -e "  ${C_GREEN}[3]${C_RESET} ❌ 关闭 WARP 出站 (恢复纯 VPS 原生直连 / 纯住宅出站)"
-        echo -e "  ${C_GREEN}[4]${C_RESET} 🔄 重新生成并刷新 WARP 双栈账号凭证"
-        echo -e "  ${C_GREEN}[5]${C_RESET} 🩺 运行流媒体/OpenAI/IP 纯净度检测"
-        echo -e "  ${C_GREEN}[6]${C_RESET} 📖 查看用户态 WireGuard 原理与防失联科普说明"
+        echo -e "  ${C_BOLD}${C_YELLOW}【关键原则】WARP 仅对【直连节点】生效，绝对不劫持【住宅节点】(住宅100%走纯家宽)${C_RESET}"
+        echo -e "  ${C_GREEN}[1]${C_RESET} 🧠 仅为直连节点解锁 OpenAI/ChatGPT (推荐: 仅ChatGPT走WARP, 保留原生Netflix/YouTube)"
+        echo -e "  ${C_GREEN}[2]${C_RESET} 🎬 为直连节点解锁 AI 与流媒体 (OpenAI + Netflix + Disney+ + TikTok 走WARP)"
+        echo -e "  ${C_GREEN}[3]${C_RESET} 🌐 直连节点全局出站走 WARP (所有直连流量经由 Cloudflare Anycast 出口)"
+        echo -e "  ${C_GREEN}[4]${C_RESET} ❌ 关闭 WARP 出站 (恢复纯 VPS 原生直连 / 纯住宅出站)"
+        echo -e "  ${C_GREEN}[5]${C_RESET} 🔄 重新生成并刷新 WARP 双栈账号凭证"
+        echo -e "  ${C_GREEN}[6]${C_RESET} 🩺 运行流媒体/OpenAI/IP 纯净度检测"
+        echo -e "  ${C_GREEN}[7]${C_RESET} 📖 查看用户态 WireGuard 原理与住宅出口绝对隔离说明"
         echo -e "${C_RED}[0]${C_RESET} 返回上级菜单"
         echo -e "${C_GREEN}======================================================================${C_RESET}"
 
-        read -rp "请选择操作 [0-6]: " opt
+        read -rp "请选择操作 [0-7]: " opt
         case "${opt}" in
             1)
-                apply_warp_to_singbox "stream"
+                apply_warp_to_singbox "ai"
                 check_unlock_status
                 read -rp "按回车键继续..." _
                 ;;
             2)
-                apply_warp_to_singbox "global"
+                apply_warp_to_singbox "stream"
                 check_unlock_status
                 read -rp "按回车键继续..." _
                 ;;
             3)
-                apply_warp_to_singbox "off"
-                read -rp "按回车键继续..." _
-                ;;
-            4)
-                register_warp_account
-                read -rp "按回车键继续..." _
-                ;;
-            5)
+                apply_warp_to_singbox "global"
                 check_unlock_status
                 read -rp "按回车键继续..." _
                 ;;
+            4)
+                apply_warp_to_singbox "off"
+                read -rp "按回车键继续..." _
+                ;;
+            5)
+                register_warp_account
+                read -rp "按回车键继续..." _
+                ;;
             6)
+                check_unlock_status
+                read -rp "按回车键继续..." _
+                ;;
+            7)
                 show_warp_principle
                 read -rp "按回车键继续..." _
                 ;;
@@ -349,6 +364,10 @@ menu() {
 }
 
 case "${1:-}" in
+    ai)
+        check_root
+        apply_warp_to_singbox "ai"
+        ;;
     stream)
         check_root
         apply_warp_to_singbox "stream"
