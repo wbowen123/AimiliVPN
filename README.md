@@ -68,6 +68,7 @@ ml sub      # 终端快速打印 10 大节点矩阵与 HTTPS 全生态订阅卡�
 ml web      # 查看网页控制面板地址、安全后缀、管理员账号与密码
 ml test     # 全自动节点连通性与健康诊断（排查 -1 超时、端口监听与阻断根因）
 ml core     # Sing-box 内核管理（一键升级最新稳定版、选择历史版本）
+ml cert     # 域名 SSL 证书管理（申请/续期/ZeroSSL/Cloudflare DNS API 免80端口）
 ml egress   # 配置住宅出口模式（内置Aimili家宽池 / 外接第三方商业SOCKS5）
 ml status   # 查看 AimiliVPN 运行状态与当前活跃住宅节点
 ml logs     # 查看 AimiliVPN 实时拨号与隧道日志
@@ -86,58 +87,41 @@ ml uninstall
 bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/install.sh) uninstall
 ```
 
-### 4. 快速使用与双节点订阅
+### 4. 快速使用与 10 大节点订阅矩阵
 
 1. **导入订阅**：
    - 复制安装完成后输出的 **HTTPS 订阅链接**：`https://你的域名或IP:18443/sub.txt`（或 `https://你的域名或IP:8443/sub/sub.txt`）；
+   - **Clash 专属订阅**：`https://你的域名或IP:18443/clash.yaml`（内置自动延迟优选与策略组）；
+   - **Sing-box 专属订阅**：`https://你的域名或IP:18443/singbox.json`；
    - 将链接导入到客户端（V2rayN、Clash Verge / Mihomo、Sing-box、Shadowrocket、Loon、Quantumult X 等）。
 2. **节点选择与分流说明**：
-   - **🚀 [VPS-直连] 原生千兆高速**：
+   - **🚀 [直连-极速] (5个协议)**：
      * 流量由您的 VPS 物理网卡直接送出；
-     * 延迟最低（几十毫秒），跑满 VPS 物理带宽，适合 YouTube 4K/8K、Steam、大文件下载与日常访问。
-   - **🏠 [VPS-住宅] Aimili穿透**：
-     * 流量进入 VPS 后，由 Sing-box 自动分流转发至 `127.0.0.1:8500`，穿透 AimiliVPN 拨号建立的 VPN 隧道，以目标国家的住宅/家宽 IP 出站；
+     * 延迟最低（几十毫秒），跑满 VPS 物理千兆带宽，适合 YouTube 4K/8K、Steam、大文件下载与日常访问。
+   - **🏠 [住宅-家宽] (5个协议)**：
+     * 流量进入 VPS 后，由 Sing-box 自动分流转发至 `127.0.0.1:8500`（或配置的外部 SOCKS5 落地代理），以目标国家的住宅/家宽 IP 出站；
      * 适合访问 ChatGPT、Claude、特定海外流媒体、账号注册及高风控检测场景。
 3. **切换住宅出口国家**：
    - 登录后台管理页面 `https://你的域名或IP:8443/安全后缀/`；
    - 在节点列表中按国家（美国、日本、英国等）、延迟筛选，点击“切换”；
    - AimiliVPN 会自动在新隧道验证成功后平滑切换，客户端无需重新连接，所有住宅节点的出站 IP 自动变为新国家。
 
-### 5. HTTPS 访问规则
+### 5. HTTPS 与域名证书管理
 
-网页管理后台固定使用 **HTTPS + 8443**：
-- **没有绑定域名**：使用 `https://服务器IP:8443/安全后缀/`，安装器提供自签名 HTTPS 证书，浏览器可能提示证书不受信任。
-- **绑定域名后**：使用 `https://你的域名:8443/安全后缀/`。首次绑定该域名时自动申请并安装 Let's Encrypt 证书，后台自动续期。
-- 绑定域名时，请先将域名 A/AAAA 解析到这台服务器，并确保公网 TCP 80 可用于 ACME 验证。
+- **没有绑定域名**：使用 `https://服务器IP:8443/安全后缀/`，安装器自动提供 ECC P-256 IP 自签名证书。
+- **绑定或更换域名**：随时在终端运行 `ml cert`，支持：
+  1. **HTTP-01 模式**：通过 80 端口一键申请 Let's Encrypt / ZeroSSL 官方权威证书；
+  2. **Cloudflare DNS API 模式**：输入 Cloudflare API Token 纯 DNS 解析申请，**无需开放 80 端口，并支持 `*.domain.com` 泛域名通配符证书**；
+  3. **强制续期与自动重载**：证书更新后自动分发至 Nginx 与 Sing-box 并热重载，永不过期。
 
-### 6. 节点检测与可用性
+### 6. 常见问题与客户端显示 -1 排查
 
-状态筛选说明：
-| 状态 | 含义 |
-| --- | --- |
-| 全部节点 | 显示全部采集到的外部节点 |
-| 待检测 | 尚未完成可用性验证，正在等待后台队列检测 |
-| 检测中 | 当前正在建立真实隧道并执行联通性检测 |
-| 可用节点 | 已经完成真实可用性验证，延迟为隧道建立后的实际延迟 |
-| 失效节点 | 当前连接失败或网络不可达 |
-
-### 7. 本地 HTTP/SOCKS5 代理网桥
-
-代理固定监听 `127.0.0.1:8500`（或指定外部 IP）。默认账号为 `socks5`，密码为 `ilovestudy`。
-
-测试本地代理连接：
-```bash
-curl --socks5-hostname socks5:ilovestudy@127.0.0.1:8500 https://api.ipify.org
-```
-
-### 8. 常见问题
-
+* **客户端测试节点显示 -1 (超时)**：
+  - 请立即运行 `ml test` 执行全自动化诊断；
+  - **最常见原因**：云服务商（AWS Lightsail、Oracle Cloud、阿里云、腾讯云等）控制台的安全组未开放入站端口。请在云后台放行 TCP `443, 8444, 8445, 18443` 和 UDP `443, 8443, 40000-50000`；
+  - 若仅 `[住宅-家宽]` 报 -1，表示 AimiliVPN 正在拨号或切换节点，运行 `ml logs` 查看拨号进度或后台切换可用节点。
 * **网页出现 502 Bad Gateway**：
-  通常表示 Nginx 正在运行，但内部 Python 服务 `127.0.0.1:8501` 正在启动或重启中。等待数秒后刷新，或运行 `systemctl status aimilivpn` 查看状态。
-* **Sing-box 无法启动（443 端口冲突）**：
-  检查是否有其他 Web 服务（如 Apache、其他 Xray 实例）占用了 443 端口：`ss -ltnp | grep :443`。
-* **导入订阅后住宅节点连不上**：
-  检查 AimiliVPN 后台是否已经成功连接至少一个活跃节点（首次部署可能需要 10~30 秒建立首个加密通道）。
+  - 通常表示内部 Python 服务 `127.0.0.1:8501` 正在启动中，数秒后刷新即可。
 
 ---
 
@@ -147,24 +131,26 @@ curl --socks5-hostname socks5:ilovestudy@127.0.0.1:8500 https://api.ipify.org
 
 ### 1. System Overview
 
-**Aimili VPN + Sing-box | Dual-Outbound Node Management System**
+**Aimili VPN + Sing-box | Full-Protocol Dual-Outbound Node Management Matrix**
 
-This system combines the strengths of two engines:
-- **Ingress Proxy (Sing-box)**: Listens on port 443 with VLESS + Reality protocol, providing high-speed and censorship-resistant client connections with instant user-based routing.
-- **Egress Bridge (AimiliVPN)**: Manages a pool of global public/residential relay nodes (OpenVPN, SoftEther, SSTP, L2TP), providing automated failover and a local SOCKS5 proxy on `127.0.0.1:8500`.
+This system combines the cutting-edge ingress of **Sing-box** with the global residential egress of **AimiliVPN**:
+- **Ingress Proxy Matrix (Sing-box)**: Delivers 5 major protocols on ports 443 (TCP Reality & UDP Hy2), 8443 (UDP TUIC), 8444 (TCP AnyTLS), and 8445 (TCP VMess). Uses user-level authentication (`auth_user`) to achieve instantaneous zero-downtime dual-outbound routing.
+- **Residential Egress Bridge (AimiliVPN)**: Dynamically maintains global public/residential relay tunnels (OpenVPN, SoftEther, SSTP, L2TP), providing a local SOCKS5 bridge on `127.0.0.1:8500` or integrating third-party commercial residential proxies.
 
-### 2. Port Architecture
+### 2. Port & Protocol Architecture
 
-| Purpose | Port | Binding | Description |
-| --- | ---: | --- | --- |
-| Sing-box Inbound (VLESS Reality) | `443/tcp` | Public | Core proxy port delivering dual-node subscriptions |
-| HTTPS Web Management | `8443/tcp` | Public (Nginx to `127.0.0.1:8501`) | Dashboard for country/node switching and monitoring |
-| HTTPS Subscription | `18443/tcp` | Public | Serves Base64-encoded subscription files |
-| Fallback Subscription Path | `8443/tcp` | Public (`/sub/sub.txt`) | Same-port HTTPS subscription alternative |
-| HTTP/SOCKS5 Egress Bridge | `8500/tcp` | `127.0.0.1` (or allowlist) | AimiliVPN tunnel egress proxy |
-| Internal Management | `8501/tcp` | Local only `127.0.0.1` | Backend daemon API, never expose publicly |
+| Protocol / Service | Port | Transport | Description |
+| :--- | :--- | :--- | :--- |
+| **VLESS-Reality** | `443/tcp` | TCP + TLS Vision | Steals authoritative TLS certs, zero domain required |
+| **Hysteria 2** | `443/udp` (Hopping: 40000-50000) | UDP (Brutal + Salamander) | Extreme line acceleration with port hopping & obfs |
+| **TUIC v5** | `8443/udp` | UDP / QUIC (BBR) | Native BBR congestion control, 0-RTT instant handshake |
+| **AnyTLS** | `8444/tcp` | TCP (Padding Obfs) | Dynamic packet size randomization against active probing |
+| **VMess-xHTTP** | `8445/tcp` | TCP (HTTP/3 Chunks) | Segmented HTTP/3 stream bypassing deep packet inspection |
+| **HTTPS Web Admin** | `8443/tcp` | TCP, Nginx reverse proxy | Visual control panel for country & node switching |
+| **Full Subscriptions** | `18443/tcp` | TCP, Nginx static host | Serves `sub.txt`, `clash.yaml`, `singbox.json` |
+| **Residential Bridge** | `8500/tcp` | `127.0.0.1` | Local Aimili dynamic residential bridge or external SOCKS5 |
 
-### 3. One-Click Installation
+### 3. One-Click Installation & Management
 
 Repository: [wbowen123/AimiliVPN](https://github.com/wbowen123/AimiliVPN)
 
@@ -174,12 +160,24 @@ Run as root on your Linux VPS:
 bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/install.sh)
 ```
 
-The installer will guide you through:
-1. Selecting **1. Install**;
-2. Entering your domain (or press Enter for IP self-signed certificate);
-3. Installing Sing-box core with automatic Reality keypair generation.
+#### Management Commands
 
-Full uninstall:
+Manage your server at any time with `ml`:
+```bash
+ml          # Launch interactive dual-core management console
+ml sub      # Print 10-node matrix and HTTPS subscription URLs
+ml web      # Display web dashboard URL, secret path, and credentials
+ml test     # Run automated health check & troubleshooting for -1 errors
+ml core     # Sing-box core manager (upgrade to latest, switch versions)
+ml cert     # SSL/TLS cert manager (HTTP-01, Cloudflare DNS API, force renew)
+ml egress   # Toggle residential egress (internal pool vs external SOCKS5)
+ml status   # View AimiliVPN status and active residential IP
+ml logs     # Tail real-time VPN dialer and tunnel logs
+ml restart  # Restart AimiliVPN residential daemon
+ml singbox  # Sing-box service management (start/stop/restart/logs/status)
+```
+
+#### Complete Uninstall
 
 ```bash
 ml uninstall
@@ -187,18 +185,17 @@ ml uninstall
 bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/install.sh) uninstall
 ```
 
-### 4. Dual-Node Subscription Usage
+### 4. 10-Node Matrix & Subscription Links
 
-1. **Import Subscription**:
-   - Copy the subscription URL printed by the installer: `https://YOUR_DOMAIN_OR_IP:18443/sub.txt` (or `https://YOUR_DOMAIN_OR_IP:8443/sub/sub.txt`).
-   - Import into any VLESS-Reality compatible client (V2rayN, Clash Verge / Mihomo, Sing-box, Shadowrocket, etc.).
-2. **Node Differences**:
-   - **🚀 [VPS-Direct]**: Exits through your VPS's physical network interface. Maximizes bandwidth (gigabit speeds) and minimizes latency. Ideal for YouTube 4K/8K, downloads, and general browsing.
-   - **🏠 [VPS-Residential]**: Routed via `127.0.0.1:8500` through AimiliVPN's active tunnel. Exits through global residential/ISP IPs. Ideal for ChatGPT, Claude, streaming, and anti-fraud bypassing.
-3. **Switching Residential Country**:
-   - Open the web dashboard at `https://YOUR_IP:8443/SECRET_PATH/`.
-   - Select any country (US, JP, UK, etc.) and click **Switch**. AimiliVPN establishes the new tunnel and smoothly updates the egress without interrupting your client connection.
+- **General Base64 Subscription**: `https://YOUR_DOMAIN_OR_IP:18443/sub.txt`
+- **Clash Meta / Mihomo Subscription**: `https://YOUR_DOMAIN_OR_IP:18443/clash.yaml` (Built-in auto-latency selector groups)
+- **Sing-box Client Subscription**: `https://YOUR_DOMAIN_OR_IP:18443/singbox.json`
+
+Each subscription delivers:
+1. **🚀 [Direct-Gigabit] (5 nodes)**: Exits through VPS physical interface. Uncapped gigabit bandwidth for YouTube 4K/8K, gaming, and downloads.
+2. **🏠 [Residential-ISP] (5 nodes)**: Routed via residential tunnel. Exits through genuine residential IPs for ChatGPT, Claude, streaming, and anti-fraud bypassing.
 
 ---
 
-**Version: V1.2.0 (Sing-box Dual-Outbound Edition)**
+**Version: V1.3.0 (Sing-box Dual-Outbound Enterprise Hardened)**
+

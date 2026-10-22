@@ -42,7 +42,8 @@ STEP="install"
 progress "install"
 find . -type d -name __pycache__ -prune -exec rm -rf {} +
 bash "$ROOT_DIR/scripts/select_core.sh" "$ROOT_DIR"
-modules="vpngate_manager.py proxy_server.py"
+chmod +x "$ROOT_DIR/scripts/"*.sh "$ROOT_DIR/aimili_cli.py" 2>/dev/null || true
+modules="vpngate_manager.py proxy_server.py aimili_cli.py"
 # shellcheck disable=SC2086
 python3 -m py_compile $modules
 echo "[GitHub Update] build check passed $(date -Is)"
