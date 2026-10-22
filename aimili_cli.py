@@ -141,13 +141,36 @@ def get_subscription_data():
     }
 
 
+def print_terminal_qr(content, title="全生态聚合订阅二维码 (手机扫码一键导入)"):
+    """渲染终端 ASCII / ANSI 二维码"""
+    qr_script = os.path.join(INSTALL_DIR, "scripts", "print_qr.py")
+    if os.path.exists(qr_script):
+        subprocess.call(["python3", qr_script, content, title])
+    elif shutil.which("qrencode"):
+        print(f"\n{C_BOLD}{C_BLUE}📱 ========== 【{title}】 =========={C_RESET}")
+        try:
+            subprocess.call(["qrencode", "-t", "ANSIUTF8", content])
+        except Exception:
+            try:
+                subprocess.call(["qrencode", "-t", "ANSI", content])
+            except Exception:
+                print(f"  * 订阅 URL: {content}")
+        print(f"{C_BOLD}{C_BLUE}======================================================================{C_RESET}\n")
+    else:
+        print(f"\n{C_BOLD}{C_BLUE}📱 ========== 【{title}】 =========={C_RESET}")
+        print(f"  * 订阅/节点 URL: {C_YELLOW}{content}{C_RESET}")
+        print(f"  * 提示: 安装 qrencode 后可在终端直接显示二维码: {C_GREEN}apt-get install -y qrencode{C_RESET}")
+        print(f"{C_BOLD}{C_BLUE}======================================================================{C_RESET}\n")
+
+
 def print_subscription_card():
-    """格式化打印全协议 10 大节点与全生态订阅详情"""
+    """格式化打印全协议 18 节点矩阵、全生态聚合订阅与终端二维码"""
     sub = get_subscription_data()
     auth = get_web_auth_data()
+    statuses = get_service_statuses()
 
     print(f"\n{C_GREEN}======================================================================{C_RESET}")
-    print(f"{C_BOLD}{C_GREEN}          ⚡ AimiliVPN 全协议矩阵 × 原生/家宽双出站订阅{C_RESET}")
+    print(f"{C_BOLD}{C_GREEN}        ⚡ AimiliVPN 全协议双栈矩阵 × 原生/家宽双出站聚合订阅{C_RESET}")
     print(f"{C_GREEN}======================================================================{C_RESET}")
 
     if not sub["all_links"]:
@@ -156,17 +179,25 @@ def print_subscription_card():
         print(f"  {C_YELLOW}bash /opt/aimilivpn/scripts/setup_singbox.sh{C_RESET}\n")
         return
 
-    print(f"{C_BOLD}【1. 多客户端通用订阅地址】{C_RESET}")
-    print(f"  * {C_GREEN}Base64 通用订阅:{C_RESET}   {C_BLUE}{C_BOLD}{sub['sub_url_18443']}{C_RESET}")
-    print(f"    (支持 v2rayN、Shadowrocket 小火箭、Loon、Surge、Quantumult X)")
-    print(f"  * {C_GREEN}Clash Meta 订阅:{C_RESET}   {C_BLUE}{C_BOLD}{sub['clash_url_18443']}{C_RESET}")
-    print(f"    (内置自动优选与故障转移策略组，支持 Clash Verge Rev、Mihomo)")
-    print(f"  * {C_GREEN}Sing-box 订阅:{C_RESET}     {C_BLUE}{C_BOLD}{sub['singbox_url_18443']}{C_RESET}")
-    print(f"    (内置 Smart-DNS 与分流规则，开箱即用)")
-    print(f"  * 明文节点列表:     {C_BLUE}{sub['nodes_txt_url']}{C_RESET}")
-    print(f"  * 备用订阅地址:     {C_BLUE}{sub['sub_url_8443']}{C_RESET}")
+    print(f"{C_BOLD}【0. 核心服务与端口实时状态】{C_RESET}")
+    print(f"  * Sing-box 代理矩阵: {statuses['singbox']}  (443 TCP/UDP, 8443 UDP, 8444 TCP, 8445 TCP)")
+    print(f"  * Aimili 住宅家宽:   {statuses['aimilivpn']}  (127.0.0.1:8500 SOCKS5 虚拟隧道池)")
+    print(f"  * Nginx 订阅系统:    {statuses['nginx']}  (18443 全格式聚合订阅 / 8443 HTTPS 管理)")
 
-    print(f"\n{C_BOLD}【2. 原生机房极速出口节点 (VPS 千兆直连 / 低延迟 / 刷4K)】{C_RESET}")
+    print(f"\n{C_BOLD}【1. 多客户端通用聚合订阅地址】{C_RESET}")
+    print(f"  * {C_GREEN}🌟 Base64 通用自适应订阅:{C_RESET} {C_BLUE}{C_BOLD}{sub['sub_url_18443']}{C_RESET}")
+    print(f"    (自适应客户端，完美适配 Shadowrocket 小火箭、v2rayN、Loon、Surge、Quantumult X)")
+    print(f"  * {C_GREEN}🐱 Clash Meta (Mihomo):{C_RESET}   {C_BLUE}{C_BOLD}{sub['clash_url_18443']}{C_RESET}")
+    print(f"    (内置自动测速优选与故障转移策略组，支持 Clash Verge Rev、Mihomo Party)")
+    print(f"  * {C_GREEN}📦 Sing-box 原生 1.10+ JSON:{C_RESET} {C_BLUE}{C_BOLD}{sub['singbox_url_18443']}{C_RESET}")
+    print(f"    (内置 Smart-DNS 分流与原生路由规则，开箱即用无需转换)")
+    print(f"  * {C_GREEN}📄 Plaintext 原始节点列表:{C_RESET}  {C_BLUE}{sub['nodes_txt_url']}{C_RESET}")
+    print(f"  * 备用订阅地址:             {C_BLUE}{sub['sub_url_8443']}{C_RESET}")
+
+    # 渲染终端 ASCII 二维码 (手机直接扫码)
+    print_terminal_qr(sub["sub_url_18443"], "全生态聚合订阅二维码 (手机小火箭 / Sing-box 扫码一键导入)")
+
+    print(f"{C_BOLD}【2. 原生机房极速出口节点 (VPS 千兆直连 / 低延迟 / 刷4K)】{C_RESET}")
     for idx, l in enumerate(sub["direct_links"], 1):
         name = urllib.parse.unquote(l.split("#")[-1]) if "#" in l else f"直连节点 {idx}"
         print(f"  {C_MAGENTA}{name}{C_RESET}\n    {C_YELLOW}{l}{C_RESET}")
@@ -177,32 +208,34 @@ def print_subscription_card():
         print(f"  {C_MAGENTA}{name}{C_RESET}\n    {C_YELLOW}{l}{C_RESET}")
 
     if sub.get("argo_links"):
-        print(f"\n{C_BOLD}【4. Cloudflare Argo 隧道穿透出口节点 (免证书 / 全球 Anycast 破墙)】{C_RESET}")
+        print(f"\n{C_BOLD}【4. Cloudflare CDN / Argo 穿透出口节点 (Anycast 优选 IP 赋能 / 破墙免流)】{C_RESET}")
         for idx, l in enumerate(sub["argo_links"], 1):
-            name = urllib.parse.unquote(l.split("#")[-1]) if "#" in l else f"Argo节点 {idx}"
+            name = urllib.parse.unquote(l.split("#")[-1]) if "#" in l else f"CDN节点 {idx}"
             print(f"  {C_MAGENTA}{name}{C_RESET}\n    {C_YELLOW}{l}{C_RESET}")
 
-    print(f"\n{C_BOLD}【4. 网页控制面板 (可视化国家/节点切换)】{C_RESET}")
+    print(f"\n{C_BOLD}【5. 网页控制面板 (可视化国家/节点切换)】{C_RESET}")
     print(f"  * 管理后台地址:     {C_BLUE}{C_BOLD}{auth['web_url']}{C_RESET}")
     print(f"  * 管理员账号:       {C_YELLOW}{auth['username']}{C_RESET}")
     print(f"  * 管理员密码:       {C_YELLOW}{auth['password']}{C_RESET}")
     if auth["secret_path"]:
         print(f"  * 安全访问后缀:     {C_GREEN}/{auth['secret_path']}/{C_RESET}（防探测机制，必须带后缀访问）")
 
-    print(f"\n{C_BOLD}【5. 协议核心配置参数】{C_RESET}")
+    print(f"\n{C_BOLD}【6. 协议核心配置参数】{C_RESET}")
     print(f"  * VLESS-Reality:    {C_GREEN}TCP 443{C_RESET} | 伪装 SNI: {C_GREEN}{sub['camouflage_domain']}{C_RESET}")
-    print(f"  * Hysteria 2:       {C_GREEN}UDP 443{C_RESET} (Brutal 拥塞对抗)")
-    print(f"  * TUIC v5:          {C_GREEN}UDP 8443{C_RESET} (QUIC / BBR 0-RTT)")
-    print(f"  * AnyTLS:           {C_GREEN}TCP 8444{C_RESET} (动态数据包长度混淆)")
-    print(f"  * VMess-xHTTP:      {C_GREEN}TCP 8445{C_RESET} (分块流防审查)")
+    print(f"  * Hysteria 2:       {C_GREEN}UDP 443{C_RESET} (Brutal 暴力抗丢包 + 40000-50000 端口跳跃)")
+    print(f"  * TUIC v5:          {C_GREEN}UDP 8443{C_RESET} (H3-QUIC / BBR 0-RTT 秒开)")
+    print(f"  * AnyTLS:           {C_GREEN}TCP 8444{C_RESET} (动态数据包长度填充防探测)")
+    print(f"  * VMess-xHTTP:      {C_GREEN}TCP 8445{C_RESET} (H2/H3 分块流防审查)")
     if sub["public_key"]:
         print(f"  * Reality 公钥:     {C_GREEN}{sub['public_key']}{C_RESET}")
 
-    print(f"\n{C_BOLD}【6. 客户端导入与使用说明】{C_RESET}")
-    print(f"  * {C_BOLD}推荐一键导入{C_RESET}: 复制上方 {C_BLUE}clash.yaml{C_RESET} 或 {C_BLUE}sub.txt{C_RESET} 地址直接填入客户端；")
+    print(f"\n{C_BOLD}【7. 客户端导入与使用说明】{C_RESET}")
+    print(f"  * {C_BOLD}手机一键扫码{C_RESET}: 打开 Shadowrocket / Sing-box 客户端，扫描上方终端二维码即可自动导入所有节点；")
+    print(f"  * {C_BOLD}电脑一键导入{C_RESET}: 复制上方 {C_BLUE}clash.yaml{C_RESET} 或 {C_BLUE}sub.txt{C_RESET} 地址直接填入客户端；")
     print(f"  * {C_BOLD}单节点手动导入{C_RESET}: 直接复制上方任一协议单链接通过剪贴板导入；")
-    print(f"  * 命令行随时调出此卡片: {C_YELLOW}ml sub{C_RESET}  |  调出网页后台信息: {C_YELLOW}ml web{C_RESET}")
+    print(f"  * 命令行随时调出此卡片: {C_YELLOW}ml sub{C_RESET}  |  仅查看二维码: {C_YELLOW}ml qr{C_RESET}  |  调出网页后台: {C_YELLOW}ml web{C_RESET}")
     print(f"{C_GREEN}======================================================================{C_RESET}\n")
+
 
 
 def check_unit_active(unit_name):
@@ -414,7 +447,7 @@ def interactive_menu():
         print(f"  管理员账号/密码:    {C_YELLOW}{auth['username']}{C_RESET} / {C_YELLOW}{auth['password']}{C_RESET}")
         print("-" * 60)
         print(f"{C_BOLD}【快捷操作】{C_RESET}")
-        print(f"  {C_GREEN}[1]{C_RESET} 查看 10 大节点矩阵与订阅链接 ({C_YELLOW}ml sub{C_RESET})")
+        print(f"  {C_GREEN}[1]{C_RESET} 查看 18 节点双栈矩阵、聚合订阅与二维码 ({C_YELLOW}ml sub{C_RESET})")
         print(f"  {C_GREEN}[2]{C_RESET} 查看网页控制面板地址与账号密码 ({C_YELLOW}ml web{C_RESET})")
         print(f"  {C_GREEN}[3]{C_RESET} 查看 AimiliVPN 运行状态 ({C_YELLOW}ml status{C_RESET})")
         print(f"  {C_GREEN}[4]{C_RESET} 重启 Sing-box 核心服务")
@@ -427,18 +460,19 @@ def interactive_menu():
         print(f"  {C_GREEN}[11]{C_RESET} Sing-box 内核版本管理 (升级最新稳定版/切换指定版本) ({C_YELLOW}ml core{C_RESET})")
         print(f"  {C_GREEN}[12]{C_RESET} 域名 SSL 证书管理 (申请/续期/ZeroSSL/Cloudflare DNS API) ({C_YELLOW}ml cert{C_RESET})")
         print(f"  {C_GREEN}[13]{C_RESET} Cloudflare Argo 隧道穿透 (免CF账号临时穿透/固定Token) ({C_YELLOW}ml argo{C_RESET})")
-        print(f"  {C_GREEN}[14]{C_RESET} Cloudflare WARP 双栈网络与流媒体解锁 (Native WireGuard) ({C_YELLOW}ml warp{C_RESET})")
+        print(f"  {C_GREEN}[14]{C_RESET} Cloudflare WARP 双栈自适应解锁 (Native WireGuard) ({C_YELLOW}ml warp{C_RESET})")
         print(f"  {C_GREEN}[15]{C_RESET} Cloudflare CDN 三网优选 IP 测速与替换 ({C_YELLOW}ml cf{C_RESET})")
         print(f"  {C_GREEN}[16]{C_RESET} HTML5 本地高保真伪装网站模版库切换 ({C_YELLOW}ml camo{C_RESET})")
         print(f"  {C_GREEN}[17]{C_RESET} Telegram Bot 节点与告警即时推送 ({C_YELLOW}ml tg{C_RESET})")
         print(f"  {C_GREEN}[18]{C_RESET} 定时系统自愈与内存深度清理管理 ({C_YELLOW}ml cron{C_RESET})")
         print(f"  {C_GREEN}[19]{C_RESET} 📖 Cloudflare DNS 双栈解析与子域名傻瓜向导 ({C_YELLOW}ml dns{C_RESET})")
-        print(f"  {C_GREEN}[20]{C_RESET} 原生管理菜单 (修改密码/端口/更新/卸载)")
+        print(f"  {C_GREEN}[20]{C_RESET} 📱 独立打印手机扫码二维码 ({C_YELLOW}ml qr{C_RESET})")
+        print(f"  {C_GREEN}[21]{C_RESET} 原生管理菜单 (修改密码/端口/更新/卸载)")
         print(f"  {C_RED}[0]{C_RESET} 退出控制台")
         print("=" * 60)
 
         try:
-            choice = input(f"{C_BOLD}请选择操作 [0-20]: {C_RESET}").strip()
+            choice = input(f"{C_BOLD}请选择操作 [0-21]: {C_RESET}").strip()
         except (KeyboardInterrupt, EOFError):
             print("\n已退出。")
             break
@@ -551,13 +585,20 @@ def interactive_menu():
                 print(f"{C_RED}未找到脚本: {cf_script}{C_RESET}")
             input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
         elif choice == "20":
+            sub = get_subscription_data()
+            print_terminal_qr(sub["sub_url_18443"], "全生态聚合订阅二维码 (手机扫码一键导入)")
+            if sub["all_links"]:
+                direct_url = sub["direct_links"][0] if sub["direct_links"] else sub["all_links"][0]
+                print_terminal_qr(direct_url, "极速原生 Reality 单节点二维码")
+            input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
+        elif choice == "21":
             call_aimili_ml([])
             break
         elif choice in ["0", "q", "quit", "exit"]:
             print("已退出控制台。")
             break
         else:
-            print(f"{C_RED}无效选项，请输入 0 到 20 之间的数字。{C_RESET}")
+            print(f"{C_RED}无效选项，请输入 0 到 21 之间的数字。{C_RESET}")
 
 
 def main():
@@ -565,6 +606,13 @@ def main():
         cmd = sys.argv[1].lower()
         if cmd in ["sub", "subs", "subscription", "subscribe", "node", "nodes", "link", "links"]:
             print_subscription_card()
+            return
+        elif cmd in ["qr", "qrcode"]:
+            sub = get_subscription_data()
+            print_terminal_qr(sub["sub_url_18443"], "全生态聚合订阅二维码 (手机扫码一键导入)")
+            if sub["all_links"]:
+                direct_url = sub["direct_links"][0] if sub["direct_links"] else sub["all_links"][0]
+                print_terminal_qr(direct_url, "极速原生 Reality 单节点二维码")
             return
         elif cmd in ["web", "ui", "panel", "admin", "dashboard"]:
             print_web_dashboard()

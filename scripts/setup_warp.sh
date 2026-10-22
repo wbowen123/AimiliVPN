@@ -148,14 +148,19 @@ EOF
 
 # 注入 WARP 到 Sing-box 配置文件
 apply_warp_to_singbox() {
-    local mode="${1:-stream}" # stream=流媒体分流, global=全量出站, off=关闭
+    local mode="${1:-stream}" # stream=流媒体分流, ai=仅AI, global=全量出站, custom:xxx=自选, off=关闭, auto=自适应
+
+    if [[ "${mode}" == "auto" ]]; then
+        auto_detect_and_apply_warp
+        return $?
+    fi
 
     if [[ ! -f "${SINGBOX_CONFIG}" ]]; then
         log_err "未找到 Sing-box 配置文件: ${SINGBOX_CONFIG}"
         return 1
     fi
 
-    if [[ ! -f "${WARP_JSON}" ]]; then
+    if [[ "${mode}" != "off" && ! -f "${WARP_JSON}" ]]; then
         register_warp_account
     fi
 
@@ -164,6 +169,7 @@ apply_warp_to_singbox() {
     python3 - "${SINGBOX_CONFIG}" "${WARP_JSON}" "${mode}" <<'EOF'
 import sys
 import json
+import os
 
 cfg_file = sys.argv[1]
 warp_file = sys.argv[2]
@@ -172,13 +178,13 @@ mode = sys.argv[3]
 with open(cfg_file, "r", encoding="utf-8") as f:
     cfg = json.load(f)
 
-with open(warp_file, "r", encoding="utf-8") as f:
-    warp = json.load(f)
-
 outbounds = cfg.get("outbounds", [])
 outbounds = [o for o in outbounds if o.get("tag") != "warp-out"]
 
-if mode != "off":
+if mode != "off" and os.path.exists(warp_file):
+    with open(warp_file, "r", encoding="utf-8") as f:
+        warp = json.load(f)
+
     ep = warp.get("peer_endpoint", "162.159.192.1:2408")
     server_host = ep.split(":")[0] if ":" in ep else ep
     server_port = int(ep.split(":")[1]) if ":" in ep else 2408
@@ -207,7 +213,17 @@ route = cfg.get("route", {})
 rules = route.get("rules", [])
 rules = [r for r in rules if r.get("outbound") != "warp-out"]
 
-if mode == "ai":
+if mode.startswith("custom:"):
+    raw_sites = mode.split(":", 1)[1]
+    sites = [s.strip() for s in raw_sites.split(",") if s.strip()]
+    if sites:
+        warp_rule = {
+            "auth_user": ["direct-user"],
+            "geosite": sites,
+            "outbound": "warp-out"
+        }
+        rules.insert(0, warp_rule)
+elif mode == "ai":
     warp_rule = {
         "auth_user": ["direct-user"],
         "geosite": ["openai"],
@@ -254,18 +270,132 @@ EOF
     fi
 }
 
+# 自适应流媒体与 AI 解锁智能探测
+auto_detect_and_apply_warp() {
+    check_root
+    echo ""
+    echo -e "${C_GREEN}======================================================================${C_RESET}"
+    echo -e "${C_BOLD}${C_GREEN}   🤖 AimiliVPN - Cloudflare WARP 自适应流媒体/AI 解锁与智能免装引擎${C_RESET}"
+    echo -e "${C_GREEN}======================================================================${C_RESET}"
+    log_info "正在全面探测当前 VPS 原生 IPv4 / IPv6 物理出口对主流 AI 与视频网站的解锁能力..."
+
+    # 1. 探测本地 IPv4 与 IPv6
+    local raw_ip4 raw_ip6
+    raw_ip4=$(curl -4 -s --connect-timeout 4 --max-time 6 https://api.ipify.org 2>/dev/null || echo "")
+    raw_ip6=$(curl -6 -s --connect-timeout 4 --max-time 6 https://api64.ipify.org 2>/dev/null || echo "")
+
+    echo -e "  * 本机物理出口: IPv4: ${C_YELLOW}${raw_ip4:-未配置/超时}${C_RESET} | IPv6: ${C_YELLOW}${raw_ip6:-未配置/无公网V6}${C_RESET}"
+    echo ""
+
+    local openai_ok=1
+    local netflix_ok=1
+    local disney_ok=1
+    local tiktok_ok=1
+
+    # 测试 OpenAI / ChatGPT
+    echo -ne "  -> [探测 1/4] OpenAI / ChatGPT 访问状态... "
+    local ai_code="000"
+    ai_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 4 --max-time 7 "https://chatgpt.com" 2>/dev/null || echo "000")
+    if [[ "${ai_code}" =~ ^(200|301|302|404)$ ]]; then
+        echo -e "${C_GREEN}原生正常解锁 [HTTP ${ai_code}]${C_RESET}"
+    else
+        echo -e "${C_RED}原生受阻断/风控 [HTTP ${ai_code}]${C_RESET}"
+        openai_ok=0
+    fi
+
+    # 测试 Netflix (80018499 非自制剧标准测速片源)
+    echo -ne "  -> [探测 2/4] Netflix 全量非自制剧片库解锁... "
+    local nf_code="000"
+    nf_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 4 --max-time 7 "https://www.netflix.com/title/80018499" 2>/dev/null || echo "000")
+    if [[ "${nf_code}" == "200" ]]; then
+        echo -e "${C_GREEN}原生全量解锁 [HTTP 200 非自制剧完整片库]${C_RESET}"
+    elif [[ "${nf_code}" == "404" ]]; then
+        echo -e "${C_YELLOW}原生仅支持自制剧 [HTTP 404]${C_RESET}"
+        netflix_ok=0
+    else
+        echo -e "${C_RED}原生完全受阻断 [HTTP ${nf_code}]${C_RESET}"
+        netflix_ok=0
+    fi
+
+    # 测试 Disney+
+    echo -ne "  -> [探测 3/4] Disney+ 国际版连通性... "
+    local dp_code="000"
+    dp_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 4 --max-time 7 "https://www.disneyplus.com" 2>/dev/null || echo "000")
+    if [[ "${dp_code}" =~ ^(200|301|302|307)$ ]]; then
+        echo -e "${C_GREEN}原生正常解锁 [HTTP ${dp_code}]${C_RESET}"
+    else
+        echo -e "${C_RED}原生受阻断 [HTTP ${dp_code}]${C_RESET}"
+        disney_ok=0
+    fi
+
+    # 测试 TikTok
+    echo -ne "  -> [探测 4/4] TikTok 国际版短视频访问... "
+    local tt_code="000"
+    tt_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 4 --max-time 7 "https://www.tiktok.com" 2>/dev/null || echo "000")
+    if [[ "${tt_code}" =~ ^(200|301|302)$ ]]; then
+        echo -e "${C_GREEN}原生正常解锁 [HTTP ${tt_code}]${C_RESET}"
+    else
+        echo -e "${C_RED}原生受阻断 [HTTP ${tt_code}]${C_RESET}"
+        tiktok_ok=0
+    fi
+
+    # 汇总计算
+    local needed_geosites=()
+    local locked_names=()
+    local unlocked_names=()
+
+    if [[ "${openai_ok}" == "1" ]]; then unlocked_names+=("OpenAI/ChatGPT"); else needed_geosites+=("openai"); locked_names+=("OpenAI/ChatGPT"); fi
+    if [[ "${netflix_ok}" == "1" ]]; then unlocked_names+=("Netflix(全量片库)"); else needed_geosites+=("netflix"); locked_names+=("Netflix"); fi
+    if [[ "${disney_ok}" == "1" ]]; then unlocked_names+=("Disney+"); else needed_geosites+=("disney"); locked_names+=("Disney+"); fi
+    if [[ "${tiktok_ok}" == "1" ]]; then unlocked_names+=("TikTok"); else needed_geosites+=("tiktok"); locked_names+=("TikTok"); fi
+
+    echo ""
+    echo -e "${C_GREEN}======================================================================${C_RESET}"
+    if [[ ${#needed_geosites[@]} -eq 0 ]]; then
+        # 全解锁场景 -> 自动放弃安装 WARP
+        echo -e "${C_BOLD}${C_GREEN}   🎉【自适应免装结论】当前 VPS 原生 IP 已 100% 完美解锁主流 AI 与流媒体！${C_RESET}"
+        echo -e "${C_GREEN}======================================================================${C_RESET}"
+        echo -e "  ✅ 状态报告: OpenAI/ChatGPT、Netflix、Disney+、TikTok 原生访问全部畅通！"
+        echo -e "  💡 智能自适应决策: ${C_BOLD}${C_GREEN}【自动放弃安装 WARP 出站】${C_RESET}"
+        echo -e "  🚀 极速保障说明: 保持纯物理千兆直连，杜绝 WARP Anycast 额外的网络损耗与臃肿，"
+        echo -e "                  享受 VPS 原汁原味的最低延迟与最高吞吐！"
+        echo -e "${C_GREEN}======================================================================${C_RESET}"
+        apply_warp_to_singbox "off"
+        return 0
+    else
+        # 部分受阻场景 -> 精准针对性分流
+        local site_list
+        site_list=$(IFS=,; echo "${needed_geosites[*]}")
+        echo -e "${C_BOLD}${C_YELLOW}   ⚠️【自适应精准分流结论】当前 VPS 原生 IP 存在部分流媒体/AI 受阻！${C_RESET}"
+        echo -e "${C_GREEN}======================================================================${C_RESET}"
+        echo -e "  * ${C_GREEN}已解锁平台 (继续走 VPS 原生物理千兆直连):${C_RESET} ${unlocked_names[*]:-无（全部需WARP接管）}"
+        echo -e "  * ${C_YELLOW}受阻断平台 (已自动接入 WARP 虚拟出口解锁):${C_RESET} ${locked_names[*]}"
+        echo -e "  💡 智能自适应决策: ${C_BOLD}${C_GREEN}【精准接管受阻服务，已解锁服务绝不减速】${C_RESET}"
+        echo -e "  🛡️ 安全红线声明: WARP 仅对【直连节点】的受阻域名生效；"
+        echo -e "                  ${C_BOLD}${C_GREEN}Aimili 住宅家宽节点 100% 保持纯洁家宽出口，绝不走任何 WARP${C_RESET}！"
+        echo -e "${C_GREEN}======================================================================${C_RESET}"
+        apply_warp_to_singbox "custom:${site_list}"
+        return 0
+    fi
+}
+
 check_unlock_status() {
     echo ""
     echo -e "${C_GREEN}======================================================================${C_RESET}"
     echo -e "${C_BOLD}${C_GREEN}               ⚡ VPS 出口与流媒体/AI 解锁状态检测${C_RESET}"
     echo -e "${C_GREEN}======================================================================${C_RESET}"
 
-    echo -ne "  检测 VPS 原生公网出口 IP:   "
-    local raw_ip
-    raw_ip=$(curl -s --connect-timeout 5 https://api.ipify.org || echo "检测超时")
-    echo -e "${C_YELLOW}${raw_ip}${C_RESET}"
+    echo -ne "  检测 VPS 原生公网出口 IPv4:   "
+    local raw_ip4
+    raw_ip4=$(curl -4 -s --connect-timeout 4 https://api.ipify.org || echo "检测超时")
+    echo -e "${C_YELLOW}${raw_ip4}${C_RESET}"
 
-    echo -ne "  检测 Cloudflare WARP 状态:   "
+    echo -ne "  检测 VPS 原生公网出口 IPv6:   "
+    local raw_ip6
+    raw_ip6=$(curl -6 -s --connect-timeout 4 https://api64.ipify.org || echo "未分配/超时")
+    echo -e "${C_YELLOW}${raw_ip6}${C_RESET}"
+
+    echo -ne "  检测 Cloudflare WARP 状态:     "
     local cf_trace
     cf_trace=$(curl -s --connect-timeout 5 https://www.cloudflare.com/cdn-cgi/trace || true)
     local warp_on
@@ -276,7 +406,7 @@ check_unlock_status() {
         echo -e "${C_YELLOW}用户态精准分流模式 (仅针对直连节点的指定域名生效，绝不影响住宅节点)${C_RESET}"
     fi
 
-    echo -ne "  检测 ChatGPT / OpenAI 解锁: "
+    echo -ne "  检测 ChatGPT / OpenAI 解锁:   "
     local ai_code
     ai_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "https://chatgpt.com" || echo "000")
     if [[ "${ai_code}" =~ 200|301|302|403 ]]; then
@@ -285,7 +415,7 @@ check_unlock_status() {
         echo -e "${C_RED}可能受限 (HTTP ${ai_code})${C_RESET}"
     fi
 
-    echo -ne "  检测 Netflix 区域与连通性:   "
+    echo -ne "  检测 Netflix 区域与连通性:     "
     local nf_code
     nf_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "https://www.netflix.com/title/80018499" || echo "000")
     if [[ "${nf_code}" == "200" ]]; then
@@ -296,10 +426,49 @@ check_unlock_status() {
         echo -e "${C_RED}受阻断 (HTTP ${nf_code})${C_RESET}"
     fi
 
-    echo -ne "  检测 YouTube CDN 分配机房:   "
+    echo -ne "  检测 YouTube CDN 分配机房:     "
     echo -e "${C_GREEN}已连接全球边缘网络${C_RESET}"
 
     echo -e "${C_GREEN}======================================================================${C_RESET}"
+}
+
+custom_warp_selection() {
+    check_root
+    echo ""
+    echo -e "${C_GREEN}======================================================================${C_RESET}"
+    echo -e "${C_BOLD}${C_GREEN}       🛠️ 自选特定平台组合接入 WARP 用户态出站${C_RESET}"
+    echo -e "${C_GREEN}======================================================================${C_RESET}"
+    echo -e "  请勾选您需要通过 WARP 解锁的网站（多个以空格分隔，如 1 2 3）："
+    echo -e "  ${C_GREEN}[1]${C_RESET} OpenAI / ChatGPT"
+    echo -e "  ${C_GREEN}[2]${C_RESET} Netflix (网飞)"
+    echo -e "  ${C_GREEN}[3]${C_RESET} Disney+ (迪士尼)"
+    echo -e "  ${C_GREEN}[4]${C_RESET} TikTok (国际短视频)"
+    echo -e "  ${C_GREEN}[5]${C_RESET} YouTube (油管)"
+    echo -e "  ${C_GREEN}[6]${C_RESET} Spotify (音乐)"
+    read -rp "请输入编号组合 [回车默认 1 2 3 4]: " c_choices
+    c_choices="${c_choices:-1 2 3 4}"
+
+    local selected_geos=()
+    for item in $c_choices; do
+        case "$item" in
+            1) selected_geos+=("openai") ;;
+            2) selected_geos+=("netflix") ;;
+            3) selected_geos+=("disney") ;;
+            4) selected_geos+=("tiktok") ;;
+            5) selected_geos+=("youtube") ;;
+            6) selected_geos+=("spotify") ;;
+        esac
+    done
+
+    if [[ ${#selected_geos[@]} -eq 0 ]]; then
+        echo -e "${C_RED}未选择任何有效平台，操作已取消。${C_RESET}"
+        return
+    fi
+
+    local final_str
+    final_str=$(IFS=,; echo "${selected_geos[*]}")
+    apply_warp_to_singbox "custom:${final_str}"
+    log_info "已成功配置自选平台走 WARP: ${final_str}"
 }
 
 menu() {
@@ -310,46 +479,56 @@ menu() {
         echo -e "${C_BOLD}${C_GREEN}       🛡️ AimiliVPN - Cloudflare WARP 双栈网络与流媒体解锁${C_RESET}"
         echo -e "${C_GREEN}======================================================================${C_RESET}"
         echo -e "  ${C_BOLD}${C_YELLOW}【关键原则】WARP 仅对【直连节点】生效，绝对不劫持【住宅节点】(住宅100%走纯家宽)${C_RESET}"
-        echo -e "  ${C_GREEN}[1]${C_RESET} 🧠 仅为直连节点解锁 OpenAI/ChatGPT (推荐: 仅ChatGPT走WARP, 保留原生Netflix/YouTube)"
-        echo -e "  ${C_GREEN}[2]${C_RESET} 🎬 为直连节点解锁 AI 与流媒体 (OpenAI + Netflix + Disney+ + TikTok 走WARP)"
-        echo -e "  ${C_GREEN}[3]${C_RESET} 🌐 直连节点全局出站走 WARP (所有直连流量经由 Cloudflare Anycast 出口)"
-        echo -e "  ${C_GREEN}[4]${C_RESET} ❌ 关闭 WARP 出站 (恢复纯 VPS 原生直连 / 纯住宅出站)"
-        echo -e "  ${C_GREEN}[5]${C_RESET} 🔄 重新生成并刷新 WARP 双栈账号凭证"
-        echo -e "  ${C_GREEN}[6]${C_RESET} 🩺 运行流媒体/OpenAI/IP 纯净度检测"
-        echo -e "  ${C_GREEN}[7]${C_RESET} 📖 查看用户态 WireGuard 原理与住宅出口绝对隔离说明"
+        echo -e "  ${C_GREEN}[1]${C_RESET} 🤖 自适应全智能检测与按需分流 (全解锁自动跳过免装，未解锁精准接管 - 强烈推荐)"
+        echo -e "  ${C_GREEN}[2]${C_RESET} 🧠 仅为直连节点解锁 OpenAI/ChatGPT (推荐: 仅ChatGPT走WARP, 保留原生Netflix/YouTube)"
+        echo -e "  ${C_GREEN}[3]${C_RESET} 🎬 为直连节点解锁 AI 与流媒体 (OpenAI + Netflix + Disney+ + TikTok 走WARP)"
+        echo -e "  ${C_GREEN}[4]${C_RESET} 🌐 直连节点全局出站走 WARP (所有直连流量经由 Cloudflare Anycast 出口)"
+        echo -e "  ${C_GREEN}[5]${C_RESET} 🛠️ 自选特定平台组合走 WARP (交互式自选: OpenAI/Netflix/Disney+/TikTok/YouTube)"
+        echo -e "  ${C_GREEN}[6]${C_RESET} ❌ 关闭 WARP 出站 (恢复纯 VPS 原生直连 / 纯住宅出站)"
+        echo -e "  ${C_GREEN}[7]${C_RESET} 🔄 重新生成并刷新 WARP 双栈账号凭证"
+        echo -e "  ${C_GREEN}[8]${C_RESET} 🩺 运行流媒体/OpenAI/IP 纯净度检测 (测试 IPv4 & IPv6 解锁情况)"
+        echo -e "  ${C_GREEN}[9]${C_RESET} 📖 查看用户态 WireGuard 原理与住宅出口绝对隔离说明"
         echo -e "${C_RED}[0]${C_RESET} 返回上级菜单"
         echo -e "${C_GREEN}======================================================================${C_RESET}"
 
-        read -rp "请选择操作 [0-7]: " opt
+        read -rp "请选择操作 [0-9]: " opt
         case "${opt}" in
             1)
+                auto_detect_and_apply_warp
+                read -rp "按回车键继续..." _
+                ;;
+            2)
                 apply_warp_to_singbox "ai"
                 check_unlock_status
                 read -rp "按回车键继续..." _
                 ;;
-            2)
+            3)
                 apply_warp_to_singbox "stream"
                 check_unlock_status
                 read -rp "按回车键继续..." _
                 ;;
-            3)
+            4)
                 apply_warp_to_singbox "global"
                 check_unlock_status
                 read -rp "按回车键继续..." _
                 ;;
-            4)
-                apply_warp_to_singbox "off"
-                read -rp "按回车键继续..." _
-                ;;
             5)
-                register_warp_account
+                custom_warp_selection
                 read -rp "按回车键继续..." _
                 ;;
             6)
-                check_unlock_status
+                apply_warp_to_singbox "off"
                 read -rp "按回车键继续..." _
                 ;;
             7)
+                register_warp_account
+                read -rp "按回车键继续..." _
+                ;;
+            8)
+                check_unlock_status
+                read -rp "按回车键继续..." _
+                ;;
+            9)
                 show_warp_principle
                 read -rp "按回车键继续..." _
                 ;;
@@ -364,6 +543,9 @@ menu() {
 }
 
 case "${1:-}" in
+    auto)
+        auto_detect_and_apply_warp
+        ;;
     ai)
         check_root
         apply_warp_to_singbox "ai"
@@ -375,6 +557,13 @@ case "${1:-}" in
     global)
         check_root
         apply_warp_to_singbox "global"
+        ;;
+    custom:*)
+        check_root
+        apply_warp_to_singbox "$1"
+        ;;
+    custom)
+        custom_warp_selection
         ;;
     off|disable)
         check_root
@@ -394,7 +583,8 @@ case "${1:-}" in
         menu
         ;;
     *)
-        echo "用法: $0 {stream|global|off|register|test|help|menu}"
+        echo "用法: $0 {auto|ai|stream|global|custom|off|register|test|help|menu}"
         exit 1
         ;;
 esac
+

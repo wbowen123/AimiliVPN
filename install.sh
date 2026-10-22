@@ -420,15 +420,112 @@ aimili_uninstall() {
     return 1
 }
 
+INSTALL_SINGBOX="y"
+INSTALL_RESI="y"
+INSTALL_WARP="auto"
+INSTALL_SUB="y"
+INSTALL_CAMO="y"
+INSTALL_BBR="y"
+SINGBOX_CAMOUFLAGE="${SINGBOX_CAMOUFLAGE:-}"
+INSTALL_JIUHEYI="n"
+
 if [ -z "${AIMILI_ACTION}" ] && [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -t 0 ]; then
-    echo -e "  1. 安装 AimiliVPN"
-    echo -e "  2. 完全卸载 AimiliVPN"
-    echo -e "  0. 退出"
-    read -r -p "请选择（回车或输入 1 为安装）: " _menu
-    case "${_menu:-1}" in
-        1) AIMILI_ACTION=install ;;
-        2) AIMILI_ACTION=uninstall ;;
-        *) exit 0 ;;
+    echo -e "${BLUE}======================================================================${PLAIN}"
+    echo -e "${BOLD}${BLUE}       🛡️ AimiliVPN 模块化架构一键部署向导 - 请选择安装组合模式${PLAIN}"
+    echo -e "${BLUE}======================================================================${PLAIN}"
+    echo -e "  ${BOLD}${GREEN}[1] 🌟【全套旗舰尊享版】(默认推荐)${PLAIN}"
+    echo -e "      ${BOLD}包含:${PLAIN} 极速原生直连五协议 + Aimili动态住宅家宽 + 自适应WARP + 伪装站 + 全格式聚合订阅"
+    echo -e "      ${BOLD}说明:${PLAIN} 部署全部功能。原生直连跑满千兆；家宽自动轮转全球无污染 IP；自适应预测速"
+    echo -e "            判定流媒体解锁（全解免装WARP，缺啥补啥）；生成 18 节点双栈全格式聚合订阅。"
+    echo -e "      ${BOLD}适用:${PLAIN} 需要兼顾千兆低延迟极速、流媒体与AI完美解锁、跨境抗封锁的全能用户。"
+    echo ""
+    echo -e "  ${BOLD}${GREEN}[2] 🚀【仅单独安装 极速原生直连代理矩阵】(轻量极速)${PLAIN}"
+    echo -e "      ${BOLD}包含:${PLAIN} VLESS-Reality / Hysteria 2 / TUIC v5 / AnyTLS / VMess-xHTTP"
+    echo -e "      ${BOLD}说明:${PLAIN} 仅部署 Sing-box 5 大抗审查协议，直接走本机公网千兆出口，不运行 Aimili 家宽后台，"
+    echo -e "            内存占用 < 50MB，CPU 零空载，适合搬瓦工/甲骨文等低配 VPS，看 4K 极度丝滑。"
+    echo ""
+    echo -e "  ${BOLD}${GREEN}[3] 🏠【仅单独安装 Aimili 动态住宅家宽网桥】(独立家宽落地)${PLAIN}"
+    echo -e "      ${BOLD}包含:${PLAIN} SOCKS5 127.0.0.1:8500 虚拟隧道池 + 8443 HTTPS 可视化管理控制台"
+    echo -e "      ${BOLD}说明:${PLAIN} 仅安装 AimiliVPN 核心守护进程，不安装对外节点协议。启动本地 8500 住宅网桥，"
+    echo -e "            可供本机现有程序或第三方自建代理（如 Xray/九合一）调用作为住宅出口落地。"
+    echo ""
+    echo -e "  ${BOLD}${GREEN}[4] ⚡【组合安装: 原生直连 + 自适应 WARP 流媒体解锁】(不含住宅家宽)${PLAIN}"
+    echo -e "      ${BOLD}包含:${PLAIN} Sing-box 原生五协议 + Cloudflare WARP 用户态自适应智能解锁引擎"
+    echo -e "      ${BOLD}说明:${PLAIN} 先自动测试原生 IP4/IP6 对 ChatGPT/Netflix 解锁，全解免装 WARP，部分受阻精准接管；"
+    echo -e "            不启动 Aimili 家宽后台，兼顾超低资源开销与 100% 主流流媒体/AI 原生解锁。"
+    echo ""
+    echo -e "  ${BOLD}${GREEN}[5] 🌐【组合安装: 原生直连 + Aimili 动态住宅家宽】(不含 WARP)${PLAIN}"
+    echo -e "      ${BOLD}包含:${PLAIN} Sing-box 原生五协议 + Aimili 动态住宅网桥 (纯物理直连 + 纯净家宽出站)"
+    echo -e "      ${BOLD}说明:${PLAIN} 直连走机房 IP，住宅走真实家宽，无需 Cloudflare 介入，保证原生与住宅 IP 纯洁度。"
+    echo ""
+    echo -e "  ${BOLD}${GREEN}[6] 📦【仅单独安装 全生态聚合订阅分发系统与 Web 管理后台】(订阅中心)${PLAIN}"
+    echo -e "      ${BOLD}包含:${PLAIN} Nginx 18443 订阅分发中心 (sub.txt / clash.yaml / singbox.json) + 8443 面板"
+    echo -e "      ${BOLD}说明:${PLAIN} 仅部署多客户端订阅转换托管服务与 HTTPS 控制台，便于集中托管与分发现有节点。"
+    echo ""
+    echo -e "  ${BOLD}${GREEN}[7] 🛠️【自定义模块高级自由勾选】(交互式按需挑选各个子组件)${PLAIN}"
+    echo -e "      ${BOLD}说明:${PLAIN} 自由选择: ①原生直连五协议 ②Aimili住宅家宽 ③自适应WARP ④伪装站 ⑤BBR优化。"
+    echo ""
+    echo -e "  ${BOLD}${RED}[8] 🗑️【完全卸载 AimiliVPN 及所有关联组件】${PLAIN}"
+    echo -e "  ${BOLD}[0] 🚪【退出安装程序】${PLAIN}"
+    echo -e "${BLUE}======================================================================${PLAIN}"
+
+    read -r -p "请选择安装模式 [0-8，回车默认为 1 全套旗舰版]: " _mode_choice
+    case "${_mode_choice:-1}" in
+        1)
+            AIMILI_ACTION=install
+            INSTALL_SINGBOX=y; INSTALL_RESI=y; INSTALL_WARP=auto; INSTALL_SUB=y; INSTALL_CAMO=y; INSTALL_BBR=y
+            ;;
+        2)
+            AIMILI_ACTION=install
+            INSTALL_SINGBOX=y; INSTALL_RESI=n; INSTALL_WARP=n; INSTALL_SUB=y; INSTALL_CAMO=y; INSTALL_BBR=y
+            ;;
+        3)
+            AIMILI_ACTION=install
+            INSTALL_SINGBOX=n; INSTALL_RESI=y; INSTALL_WARP=n; INSTALL_SUB=n; INSTALL_CAMO=n; INSTALL_BBR=y
+            ;;
+        4)
+            AIMILI_ACTION=install
+            INSTALL_SINGBOX=y; INSTALL_RESI=n; INSTALL_WARP=auto; INSTALL_SUB=y; INSTALL_CAMO=y; INSTALL_BBR=y
+            ;;
+        5)
+            AIMILI_ACTION=install
+            INSTALL_SINGBOX=y; INSTALL_RESI=y; INSTALL_WARP=n; INSTALL_SUB=y; INSTALL_CAMO=y; INSTALL_BBR=y
+            ;;
+        6)
+            AIMILI_ACTION=install
+            INSTALL_SINGBOX=n; INSTALL_RESI=n; INSTALL_WARP=n; INSTALL_SUB=y; INSTALL_CAMO=y; INSTALL_BBR=n
+            ;;
+        7)
+            AIMILI_ACTION=install
+            echo -e "\n${YELLOW}--- 进入自定义按需勾选向导 ---${PLAIN}"
+            read -r -p "1. 是否安装 Sing-box 原生直连五协议矩阵？(Y/n): " _c_sb
+            case "${_c_sb:-y}" in n|N) INSTALL_SINGBOX=n ;; *) INSTALL_SINGBOX=y ;; esac
+
+            read -r -p "2. 是否安装 Aimili 动态住宅家宽网桥 (SOCKS5 8500)？(Y/n): " _c_resi
+            case "${_c_resi:-y}" in n|N) INSTALL_RESI=n ;; *) INSTALL_RESI=y ;; esac
+
+            read -r -p "3. 是否启用 Cloudflare WARP 自适应流媒体/AI 解锁？(Y/n): " _c_warp
+            case "${_c_warp:-y}" in n|N) INSTALL_WARP=n ;; *) INSTALL_WARP=auto ;; esac
+
+            read -r -p "4. 是否安装 Nginx 18443 全生态聚合订阅分发服务？(Y/n): " _c_sub
+            case "${_c_sub:-y}" in n|N) INSTALL_SUB=n ;; *) INSTALL_SUB=y ;; esac
+
+            read -r -p "5. 是否部署 HTML5 本地高保真伪装网站？(Y/n): " _c_camo
+            case "${_c_camo:-y}" in n|N) INSTALL_CAMO=n ;; *) INSTALL_CAMO=y ;; esac
+
+            read -r -p "6. 是否开启 Linux 原生 BBR 内核拥塞优化？(Y/n): " _c_bbr
+            case "${_c_bbr:-y}" in n|N) INSTALL_BBR=n ;; *) INSTALL_BBR=y ;; esac
+            ;;
+        8)
+            AIMILI_ACTION=uninstall
+            ;;
+        0)
+            exit 0
+            ;;
+        *)
+            AIMILI_ACTION=install
+            INSTALL_SINGBOX=y; INSTALL_RESI=y; INSTALL_WARP=auto; INSTALL_SUB=y; INSTALL_CAMO=y; INSTALL_BBR=y
+            ;;
     esac
 fi
 AIMILI_ACTION="${AIMILI_ACTION:-install}"
@@ -468,69 +565,20 @@ if [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -d /opt/aimilivpn ] && [ "${AIMILI
     fi
 fi
 
-INSTALL_SINGBOX="${INSTALL_SINGBOX:-}"
-SINGBOX_CAMOUFLAGE="${SINGBOX_CAMOUFLAGE:-}"
-INSTALL_JIUHEYI="${INSTALL_JIUHEYI:-n}"
-JIUHEYI_CORE_CHOICE="${JIUHEYI_CORE:-}"
-JIUHEYI_CAMOUFLAGE="${JIUHEYI_REALITY_DOMAIN:-}"
-jiuheyi_already_installed() {
-    [ -f /etc/v2ray-agent/xray/xray ] || [ -f /etc/v2ray-agent/sing-box/sing-box ]
-}
 if [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -t 0 ]; then
-    if [ -z "${AIMILIVPN_DOMAIN+x}" ]; then
-        read -r -p "请输入域名（已解析到本机），没有就直接回车: " AIMILIVPN_DOMAIN
-    fi
-    AIMILIVPN_DOMAIN=$(printf '%s' "${AIMILIVPN_DOMAIN:-}" | tr -d '[:space:]')
-    if [ -z "${INSTALL_SINGBOX}" ]; then
-        echo -e "\n${BLUE}是否安装 Sing-box 全协议代理矩阵（包含 原生直连 + Aimili 动态家宽住宅 10 大节点订阅）？${PLAIN}"
-        echo -e "  1. 是（推荐，支持 VLESS-Reality / Hysteria 2 / TUIC v5 / AnyTLS / VMess）"
-        echo -e "  2. 否"
-        read -r -p "请选择（回车默认为 1）: " _sb_choice
-        case "${_sb_choice:-1}" in
-            1|y|Y) INSTALL_SINGBOX=y ;;
-            *) INSTALL_SINGBOX=n ;;
-        esac
+    if [ "${INSTALL_SINGBOX}" = "y" ] || [ "${INSTALL_SUB}" = "y" ]; then
+        if [ -z "${AIMILIVPN_DOMAIN+x}" ]; then
+            read -r -p "请输入域名（已解析到本机，可配真实证书和小黄云破墙），没有就直接回车使用纯 IP: " AIMILIVPN_DOMAIN
+        fi
+        AIMILIVPN_DOMAIN=$(printf '%s' "${AIMILIVPN_DOMAIN:-}" | tr -d '[:space:]')
     fi
     if [ "${INSTALL_SINGBOX}" = "y" ]; then
         if [ -z "${SINGBOX_CAMOUFLAGE}" ]; then
             read -r -p "请输入 Reality 伪装域名 [直接回车自动本地测速优选]: " SINGBOX_CAMOUFLAGE
             SINGBOX_CAMOUFLAGE=$(printf '%s' "${SINGBOX_CAMOUFLAGE}" | tr -d '[:space:]')
         fi
-        INSTALL_JIUHEYI=n
-    else
-        if jiuheyi_already_installed; then
-            echo -e "${YELLOW}检测到九合一已安装，跳过。${PLAIN}"
-            INSTALL_JIUHEYI=n
-        elif [ -z "${INSTALL_JIUHEYI}" ]; then
-            echo -e "是否安装九合一？"
-            echo -e "  1. 是"
-            echo -e "  2. 否"
-            read -r -p "请选择（回车为否）: " INSTALL_JIUHEYI
-            case "${INSTALL_JIUHEYI}" in
-                1|y|Y) INSTALL_JIUHEYI=y ;;
-                *) INSTALL_JIUHEYI=n ;;
-            esac
-        fi
-        if [ "${INSTALL_JIUHEYI}" = "y" ]; then
-            if [ -z "${JIUHEYI_CAMOUFLAGE}" ]; then
-                read -r -p "请输入伪装域名，直接回车自动挑选: " JIUHEYI_CAMOUFLAGE
-                JIUHEYI_CAMOUFLAGE=$(printf '%s' "${JIUHEYI_CAMOUFLAGE}" | tr -d '[:space:]')
-            fi
-            if [ -z "${JIUHEYI_USER_PREFIX:-}" ]; then
-                read -r -p "请输入用户名前缀，直接回车随机（UUID 前 8 位）: " JIUHEYI_USER_PREFIX
-                JIUHEYI_USER_PREFIX=$(printf '%s' "${JIUHEYI_USER_PREFIX}" | tr -d ' /\\"'"'"'\n\r-')
-            fi
-            if [ -n "${AIMILIVPN_DOMAIN}" ] && [ -z "${JIUHEYI_CORE_CHOICE}" ]; then
-                echo -e "选择内核："
-                echo -e "  1. Xray"
-                echo -e "  2. sing-box"
-                read -r -p "请选择（回车为 Xray）: " JIUHEYI_CORE_CHOICE
-                case "${JIUHEYI_CORE_CHOICE}" in 2|sing-box|singbox) JIUHEYI_CORE_CHOICE=2 ;; *) JIUHEYI_CORE_CHOICE=1 ;; esac
-            fi
-        fi
     fi
 fi
-[ -z "${INSTALL_SINGBOX}" ] && INSTALL_SINGBOX=y
 # 域名校验放在问完问题之后、安装任何东西之前。格式须是完整域名（FQDN），且解析到本机公网 IPv4/IPv6。
 # 不通过就红字「域名无效或无法解析」并退出（此时还没装任何东西，无需回滚）。
 aimili_public_ips() {
@@ -633,7 +681,7 @@ if [ "$PKG_MGR" = "apt-get" ]; then
     echo -e "  -> 正在运行 apt-get update 更新软件源清单..."
     aimili_apt_update || true
     echo -e "  -> 正在运行 apt-get install 安装基础依赖包..."
-    apt-get install -y openvpn curl git ca-certificates iptables iproute2 psmisc python3 python3-venv python3-pip python3-dev ppp procps net-tools dnsutils wget unzip jq openssl mount util-linux iputils-ping
+    apt-get install -y openvpn curl git ca-certificates iptables iproute2 psmisc python3 python3-venv python3-pip python3-dev ppp procps net-tools dnsutils wget unzip jq openssl mount util-linux iputils-ping qrencode
     if [ "$OS_TYPE" = "ubuntu" ]; then
         echo -e "  -> 安装 Ubuntu 多协议 VPN 依赖（SoftEther / L2TP-IPsec / SSTP）..."
         # 记下本次新装的多协议服务包（装之前没有的），卸载时只停/清这些，原本就有的不动
@@ -650,15 +698,15 @@ elif [ "$PKG_MGR" = "apk" ]; then
     echo -e "  -> 正在运行 apk update 更新软件源清单..."
     apk update || true
     echo -e "  -> 正在运行 apk add 安装基础依赖包..."
-    apk add openvpn curl git ca-certificates iptables iproute2 psmisc python3 python3-dev py3-pip bash procps net-tools bind-tools wget unzip jq openssl util-linux iputils
+    apk add openvpn curl git ca-certificates iptables iproute2 psmisc python3 python3-dev py3-pip bash procps net-tools bind-tools wget unzip jq openssl util-linux iputils qrencode
 elif [ "$PKG_MGR" = "dnf" ] || [ "$PKG_MGR" = "yum" ]; then
     echo -e "  -> 正在运行 $PKG_MGR 安装基础依赖包..."
     if [ "$OS_TYPE" != "fedora" ] && [ "$OS_TYPE" != "amzn" ]; then
         echo -e "     -> 正在安装 EPEL 软件源 (以支持 openvpn)..."
         $PKG_MGR install -y epel-release || true
     fi
-    $PKG_MGR install -y openvpn curl git ca-certificates iptables iproute psmisc python3 python3-pip python3-devel ppp procps-ng net-tools bind-utils wget unzip jq openssl util-linux iputils || \
-    $PKG_MGR install -y openvpn curl git ca-certificates iptables iproute2 psmisc python3 python3-pip python3-devel ppp procps-ng net-tools bind-utils wget unzip jq openssl util-linux iputils
+    $PKG_MGR install -y openvpn curl git ca-certificates iptables iproute psmisc python3 python3-pip python3-devel ppp procps-ng net-tools bind-utils wget unzip jq openssl util-linux iputils qrencode || \
+    $PKG_MGR install -y openvpn curl git ca-certificates iptables iproute2 psmisc python3 python3-pip python3-devel ppp procps-ng net-tools bind-utils wget unzip jq openssl util-linux iputils qrencode
 fi
 
 INSTALL_DIR="/opt/aimilivpn"
@@ -1021,26 +1069,32 @@ if [ -d "/proc/sys/net/ipv4/conf" ]; then
     done
 fi
 
-echo -e "\n正在启动 AimiliVPN 服务并初始化网络..."
-if command -v systemctl >/dev/null 2>&1; then
-    if ! systemctl restart aimilivpn.service; then
-        echo -e "${RED}错误: aimilivpn.service 启动失败，安装终止。${PLAIN}"
-        systemctl --no-pager --full status aimilivpn.service || true
-        exit 1
+if [ "${INSTALL_RESI:-y}" = "y" ]; then
+    echo -e "\n正在启动 AimiliVPN 服务并初始化网络..."
+    if command -v systemctl >/dev/null 2>&1; then
+        if ! systemctl restart aimilivpn.service; then
+            echo -e "${RED}错误: aimilivpn.service 启动失败，安装终止。${PLAIN}"
+            systemctl --no-pager --full status aimilivpn.service || true
+            exit 1
+        fi
+        sleep 2
+        if ! systemctl is-active --quiet aimilivpn.service; then
+            echo -e "${RED}错误: aimilivpn.service 未进入 active 状态，安装终止。${PLAIN}"
+            systemctl --no-pager --full status aimilivpn.service || true
+            exit 1
+        fi
+        echo -e "${GREEN}  -> aimilivpn.service 已验证为 active${PLAIN}"
+    elif command -v rc-service >/dev/null 2>&1; then
+        if ! rc-service aimilivpn restart; then
+            echo -e "${RED}错误: aimilivpn OpenRC 服务启动失败，安装终止。${PLAIN}"
+            exit 1
+        fi
+        echo -e "${GREEN}  -> aimilivpn OpenRC 服务已启动${PLAIN}"
     fi
-    sleep 2
-    if ! systemctl is-active --quiet aimilivpn.service; then
-        echo -e "${RED}错误: aimilivpn.service 未进入 active 状态，安装终止。${PLAIN}"
-        systemctl --no-pager --full status aimilivpn.service || true
-        exit 1
-    fi
-    echo -e "${GREEN}  -> aimilivpn.service 已验证为 active${PLAIN}"
-elif command -v rc-service >/dev/null 2>&1; then
-    if ! rc-service aimilivpn restart; then
-        echo -e "${RED}错误: aimilivpn OpenRC 服务启动失败，安装终止。${PLAIN}"
-        exit 1
-    fi
-    echo -e "${GREEN}  -> aimilivpn OpenRC 服务已启动${PLAIN}"
+else
+    echo -e "\n${YELLOW}  -> 跳过启动 AimiliVPN 家宽后台进程 (当前为极速原生直连模式，系统保持极致轻量)${PLAIN}"
+    systemctl stop aimilivpn.service >/dev/null 2>&1 || true
+    systemctl disable aimilivpn.service >/dev/null 2>&1 || true
 fi
 
 if [ -x "${INSTALL_DIR}/scripts/setup_https.sh" ]; then
@@ -1132,38 +1186,40 @@ PY
     fi
 fi
 
-echo -e "\n正在等待 AimiliVPN 首次获取节点并建立加密通道 (此过程可能需要 5-30 秒)..."
-ACTIVE_ID=""
-LAST_MSG=""
-for i in {1..90}; do
-    if [ -f "${INSTALL_DIR}/vpngate_data/state.json" ]; then
-        ACTIVE_ID=$(python3 -c "import json; print(json.load(open('${INSTALL_DIR}/vpngate_data/state.json')).get('active_openvpn_node_id', ''))" 2>/dev/null || echo "")
-        IS_CONN=$(python3 -c "import json; print(json.load(open('${INSTALL_DIR}/vpngate_data/state.json')).get('is_connecting', False))" 2>/dev/null || echo "False")
-        CUR_MSG=$(python3 -c "import json; print(json.load(open('${INSTALL_DIR}/vpngate_data/state.json')).get('last_check_message', ''))" 2>/dev/null || echo "")
-        
-        if [ "$IS_CONN" = "False" ] || [ "$IS_CONN" = "false" ]; then
-            if [ -n "$ACTIVE_ID" ]; then
-                echo -e "  -> ${GREEN}[已就绪]${PLAIN} 首次节点连接成功，活动节点: ${GREEN}$ACTIVE_ID${PLAIN}"
-                break
+if [ "${INSTALL_RESI:-y}" = "y" ]; then
+    echo -e "\n正在等待 AimiliVPN 首次获取节点并建立加密通道 (此过程可能需要 5-30 秒)..."
+    ACTIVE_ID=""
+    LAST_MSG=""
+    for i in {1..90}; do
+        if [ -f "${INSTALL_DIR}/vpngate_data/state.json" ]; then
+            ACTIVE_ID=$(python3 -c "import json; print(json.load(open('${INSTALL_DIR}/vpngate_data/state.json')).get('active_openvpn_node_id', ''))" 2>/dev/null || echo "")
+            IS_CONN=$(python3 -c "import json; print(json.load(open('${INSTALL_DIR}/vpngate_data/state.json')).get('is_connecting', False))" 2>/dev/null || echo "False")
+            CUR_MSG=$(python3 -c "import json; print(json.load(open('${INSTALL_DIR}/vpngate_data/state.json')).get('last_check_message', ''))" 2>/dev/null || echo "")
+            
+            if [ "$IS_CONN" = "False" ] || [ "$IS_CONN" = "false" ]; then
+                if [ -n "$ACTIVE_ID" ]; then
+                    echo -e "  -> ${GREEN}[已就绪]${PLAIN} 首次节点连接成功，活动节点: ${GREEN}$ACTIVE_ID${PLAIN}"
+                    break
+                else
+                    if [ -n "$CUR_MSG" ] && [ "$CUR_MSG" != "$LAST_MSG" ]; then
+                        echo -e "  -> 提示: ${YELLOW}${CUR_MSG}${PLAIN}"
+                        LAST_MSG="$CUR_MSG"
+                    fi
+                fi
             else
                 if [ -n "$CUR_MSG" ] && [ "$CUR_MSG" != "$LAST_MSG" ]; then
-                    echo -e "  -> 提示: ${YELLOW}${CUR_MSG}${PLAIN}"
+                    echo -e "  -> 状态: ${YELLOW}${CUR_MSG}${PLAIN}"
                     LAST_MSG="$CUR_MSG"
                 fi
             fi
         else
-            if [ -n "$CUR_MSG" ] && [ "$CUR_MSG" != "$LAST_MSG" ]; then
-                echo -e "  -> 状态: ${YELLOW}${CUR_MSG}${PLAIN}"
-                LAST_MSG="$CUR_MSG"
-            fi
+            echo -n "."
         fi
-    else
-        echo -n "."
+        sleep 1
+    done
+    if [ -z "$ACTIVE_ID" ]; then
+        echo -e "  -> ${YELLOW}[加载超时]${PLAIN} 首次节点获取或连接超时，将在后台继续尝试..."
     fi
-    sleep 1
-done
-if [ -z "$ACTIVE_ID" ]; then
-    echo -e "  -> ${YELLOW}[加载超时]${PLAIN} 首次节点获取或连接超时，将在后台继续尝试..."
 fi
 
 SECRET_PATH="EJsW2EeBo9lY"
@@ -1228,17 +1284,19 @@ aimili_print_summary() {
             python3 "${INSTALL_DIR}/aimili_cli.py" sub
         else
             local sub_host="${AIMILIVPN_DOMAIN:-${PUBLIC_IP}}"
-            local direct_url resi_url
-            direct_url=$(python3 -c "import json; print(json.load(open('${INSTALL_DIR}/vpngate_data/singbox_nodes.json')).get('direct_url',''))" 2>/dev/null || echo "")
-            resi_url=$(python3 -c "import json; print(json.load(open('${INSTALL_DIR}/vpngate_data/singbox_nodes.json')).get('resi_url',''))" 2>/dev/null || echo "")
-            echo -e "${GREEN}             Sing-box 双节点分流服务已就绪！${PLAIN}"
-            echo -e "  * 核心状态:             ${GREEN}运行中 (端口 443 / VLESS Reality)${PLAIN}"
-            echo -e "  * HTTPS 订阅地址:       ${BLUE}https://${sub_host}:18443/sub.txt${PLAIN}"
-            echo -e "  * 备用订阅地址:         ${BLUE}https://${sub_host}:8443/sub/sub.txt${PLAIN}"
-            echo -e " --------------------------------------------------------"
-            echo -e "  * [节点 1: 原生直连]:   ${YELLOW}${direct_url}${PLAIN}"
-            echo -e "  * [节点 2: 住宅穿透]:   ${YELLOW}${resi_url}${PLAIN}"
-            echo -e "=========================================================="
+            echo -e "${GREEN}======================================================================${PLAIN}"
+            echo -e "${BOLD}${GREEN}        ⚡ AimiliVPN 全协议双栈矩阵 × 原生/家宽双出站聚合订阅${PLAIN}"
+            echo -e "${GREEN}======================================================================${PLAIN}"
+            echo -e "  * 核心状态:             ${GREEN}运行中 (端口 443 / VLESS Reality / Hysteria 2 / TUIC)${PLAIN}"
+            echo -e "  * 🌟 Base64 通用订阅:   ${BLUE}https://${sub_host}:18443/sub.txt${PLAIN}"
+            echo -e "  * 🐱 Clash Meta 订阅:   ${BLUE}https://${sub_host}:18443/clash.yaml${PLAIN}"
+            echo -e "  * 📦 Sing-box 原生订阅: ${BLUE}https://${sub_host}:18443/singbox.json${PLAIN}"
+            echo -e "  * 📄 Plaintext 节点:    ${BLUE}https://${sub_host}:18443/nodes.txt${PLAIN}"
+            echo -e "  * 备用 HTTPS 订阅:      ${BLUE}https://${sub_host}:8443/sub/sub.txt${PLAIN}"
+            if [ -f "${INSTALL_DIR}/scripts/print_qr.py" ]; then
+                python3 "${INSTALL_DIR}/scripts/print_qr.py" "https://${sub_host}:18443/sub.txt" "全生态聚合订阅二维码 (手机扫码一键导入)"
+            fi
+            echo -e "${GREEN}======================================================================${PLAIN}"
             echo
         fi
     elif [ "${INSTALL_JIUHEYI:-}" = "y" ] || [ "${INSTALL_JIUHEYI:-}" = "Y" ]; then
@@ -1260,9 +1318,21 @@ aimili_print_summary() {
 
 
 if [ "${INSTALL_SINGBOX:-}" = "y" ] || [ "${INSTALL_SINGBOX:-}" = "Y" ]; then
-    echo -e "\n${YELLOW}开始配置 Sing-box 双出站核心与订阅...${PLAIN}"
+    echo -e "\n${YELLOW}开始配置 Sing-box 全协议核心与全生态订阅...${PLAIN}"
     if [ -f "${INSTALL_DIR}/scripts/setup_singbox.sh" ]; then
         bash "${INSTALL_DIR}/scripts/setup_singbox.sh" "${SINGBOX_CAMOUFLAGE:-gateway.icloud.com}"
+    fi
+
+    # 执行 WARP 自适应流媒体与 AI 解锁配置
+    if [ "${INSTALL_WARP:-auto}" = "auto" ] || [ "${INSTALL_WARP:-}" = "y" ]; then
+        echo -e "\n${YELLOW}开始执行 Cloudflare WARP 自适应流媒体与 AI 解锁智能探测...${PLAIN}"
+        if [ -f "${INSTALL_DIR}/scripts/setup_warp.sh" ]; then
+            bash "${INSTALL_DIR}/scripts/setup_warp.sh" auto || true
+        fi
+    elif [ "${INSTALL_WARP:-}" = "n" ]; then
+        if [ -f "${INSTALL_DIR}/scripts/setup_warp.sh" ]; then
+            bash "${INSTALL_DIR}/scripts/setup_warp.sh" off >/dev/null 2>&1 || true
+        fi
     fi
 elif [ "${INSTALL_JIUHEYI:-}" = "y" ] || [ "${INSTALL_JIUHEYI:-}" = "Y" ]; then
     if [ -f /etc/v2ray-agent/xray/xray ] || [ -f /etc/v2ray-agent/sing-box/sing-box ]; then
