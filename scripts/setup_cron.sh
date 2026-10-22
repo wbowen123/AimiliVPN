@@ -179,6 +179,11 @@ menu() {
         echo -e "${C_GREEN}======================================================================${C_RESET}"
         echo -e "${C_BOLD}${C_GREEN}      ⏰ AimiliVPN - 定时系统自愈与内存清理管理${C_RESET}"
         echo -e "${C_GREEN}======================================================================${C_RESET}"
+        local total_mem_mb
+        total_mem_mb=$(free -m 2>/dev/null | awk '/Mem:/ {print $2}' || echo "2048")
+        if [[ "${total_mem_mb}" -le 1024 ]]; then
+            echo -e "  💡 ${C_YELLOW}系统检测: 当前物理内存为 ${total_mem_mb}MB (<= 1GB)，强烈推荐启用定时自愈与看门狗，防 OOM 假死！${C_RESET}"
+        fi
         echo -e "  ${C_GREEN}[1]${C_RESET} 启用定时自愈与看门狗任务 (推荐，全自动无忧运维)"
         echo -e "  ${C_GREEN}[2]${C_RESET} 立即执行一次深度维护 (内存深度清理 + 时钟校准 + 证书检测)"
         echo -e "  ${C_GREEN}[3]${C_RESET} 立即执行一次进程看门狗与 IP 检查"

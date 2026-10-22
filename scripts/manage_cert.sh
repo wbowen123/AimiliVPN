@@ -242,28 +242,33 @@ apply_new_cert_dns() {
     echo -e "      适合 80 端口被封锁的 VPS，并支持申请 ${YELLOW}*.yourdomain.com${PLAIN} 通配符泛域名！"
     echo "----------------------------------------------------------"
 
-    read -r -p "请输入要申请的域名 (支持单个域名或泛域名 *.example.com): " cf_domain
-    cf_domain=$(echo "$cf_domain" | tr -d '[:space:]')
+    local cf_domain="${1:-}"
+    if [ -z "$cf_domain" ]; then
+        read -r -p "请输入要申请的域名 (支持单个域名或泛域名 *.example.com): " cf_domain
+        cf_domain=$(echo "$cf_domain" | tr -d '[:space:]')
+    fi
     if [ -z "$cf_domain" ]; then
         echo -e "${RED}域名不能为空！${PLAIN}"
         return 1
     fi
 
-    echo -e "请选择 Cloudflare 认证方式:"
-    echo -e "  ${GREEN}[1]${PLAIN} Cloudflare API Token (推荐，权限受限更安全)"
-    echo -e "  ${GREEN}[2]${PLAIN} Cloudflare Global API Key + 邮箱"
-    read -r -p "请选择 [1-2, 默认 1]: " cf_auth_mode
+    if [ -z "${CF_Token:-}" ] && [ -z "${CF_Key:-}" ]; then
+        echo -e "请选择 Cloudflare 认证方式:"
+        echo -e "  ${GREEN}[1]${PLAIN} Cloudflare API Token (推荐，权限受限更安全)"
+        echo -e "  ${GREEN}[2]${PLAIN} Cloudflare Global API Key + 邮箱"
+        read -r -p "请选择 [1-2, 默认 1]: " cf_auth_mode
 
-    if [ "$cf_auth_mode" = "2" ]; then
-        read -r -p "请输入 Cloudflare 账号邮箱: " CF_Email
-        read -r -s -p "请输入 Cloudflare Global API Key: " CF_Key
-        echo
-        export CF_Email="$CF_Email"
-        export CF_Key="$CF_Key"
-    else
-        read -r -s -p "请输入 Cloudflare API Token (具备 Zone:DNS:Edit 权限): " CF_Token
-        echo
-        export CF_Token="$CF_Token"
+        if [ "$cf_auth_mode" = "2" ]; then
+            read -r -p "请输入 Cloudflare 账号邮箱: " CF_Email
+            read -r -s -p "请输入 Cloudflare Global API Key: " CF_Key
+            echo
+            export CF_Email="$CF_Email"
+            export CF_Key="$CF_Key"
+        else
+            read -r -s -p "请输入 Cloudflare API Token (具备 Zone:DNS:Edit 权限): " CF_Token
+            echo
+            export CF_Token="$CF_Token"
+        fi
     fi
 
     echo -e "${YELLOW}  -> 正在通过 Cloudflare DNS API 自动化签发证书...${PLAIN}"
@@ -413,6 +418,7 @@ if [ $# -gt 0 ]; then
         view|status|info) view_cert_details ;;
         renew) force_renew_cert ;;
         reset) reset_ip_self_signed ;;
+        dns) apply_new_cert_dns "${2:-}" ;;
         *) apply_new_cert_http ;;
     esac
 else

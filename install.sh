@@ -589,12 +589,27 @@ fi
 if [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -t 0 ]; then
     if [ "${INSTALL_SINGBOX}" = "y" ] || [ "${INSTALL_SUB}" = "y" ]; then
         if [ -z "${AIMILIVPN_DOMAIN+x}" ]; then
-            echo -e "\n${BOLD}${BLUE}【SSL/TLS 访问证书与域名绑定说明】${PLAIN}"
-            echo -e "  * ${GREEN}有域名${PLAIN}: 输入已解析到本机的域名，系统将自动申请官方 Let's Encrypt / ZeroSSL 证书并配置自动续期；"
-            echo -e "  * ${YELLOW}无域名${PLAIN}: 直接回车，系统将自动签发 10 年免维护 IP ECC 专属证书（支持纯 IP 订阅与管理，后续可随时 ml cert 补绑）；"
-            read -r -p "请输入您的域名 [没有请直接按回车使用纯 IP 证书]: " AIMILIVPN_DOMAIN
+            echo -e "\n${BOLD}${BLUE}【SSL/TLS 域名绑定与双栈 DNS 物理隔离规范 (推荐最佳实践)】${PLAIN}"
+            echo -e "  * ${GREEN}双栈物理隔离规范 (彻底解决开小黄云拖慢直连与家宽的问题)${PLAIN}:"
+            echo -e "    ① direct.域名 -> 解析本机 IPv4/IPv6 [必须关闭小黄云/灰云] (专供直连与家宽跑满物理千兆)"
+            echo -e "    ② cdn.域名    -> 解析本机 IPv4/IPv6 [必须开启小黄云/橙云] (专供 CDN/Argo 破墙救急与免流)"
+            echo -e "  * ${YELLOW}若暂无域名${PLAIN}: 直接回车，系统将自动签发 10 年免维护 IP ECC 专属证书（后续可随时 ml cert 补绑）；"
+            read -r -p "请输入您的域名 (例如 direct.example.com 或 example.com) [直接回车使用纯 IP 证书]: " AIMILIVPN_DOMAIN
         fi
         AIMILIVPN_DOMAIN=$(printf '%s' "${AIMILIVPN_DOMAIN:-}" | tr -d '[:space:]')
+
+        if [ -n "${AIMILIVPN_DOMAIN}" ]; then
+            echo -e "\n${BOLD}${BLUE}【域名证书签发与验证模式】${PLAIN}"
+            echo -e "  * [1] 官方 HTTP-01 验证 (需要开放 80 端口，全自动申请与续签) [推荐，直接回车]"
+            echo -e "  * [2] Cloudflare DNS-01 API 验证 (免 80 端口 / 适合 80 端口被封的 VPS / 支持泛域名)"
+            read -r -p "请选择验证方式 [1-2，默认 1]: " CERT_VERIFY_MODE
+            CERT_VERIFY_MODE="${CERT_VERIFY_MODE:-1}"
+            if [ "${CERT_VERIFY_MODE}" = "2" ]; then
+                read -r -s -p "请输入 Cloudflare API Token (需具备 Zone:DNS:Edit 权限): " CF_TOKEN_INPUT
+                echo
+                export CF_Token="${CF_TOKEN_INPUT}"
+            fi
+        fi
     fi
     if [ "${INSTALL_SINGBOX}" = "y" ]; then
         if [ -z "${SINGBOX_CAMOUFLAGE}" ]; then
@@ -628,8 +643,12 @@ if [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -t 0 ]; then
         DO_TUNE_BBR=$(echo "${DO_TUNE_BBR:-y}" | tr '[:upper:]' '[:lower:]')
     fi
 
+    mem_mb=$(( $(aimili_mem_kb) / 1024 ))
     echo -e "\n${BOLD}${BLUE}【定时系统自愈、每日内存深度清理与 15分钟看门狗】${PLAIN}"
     echo -e "  * 作用说明: 每日 04:00 深度释放内核缓存内存 + HTTPS 时钟校准 + 证书自动续签，每 15 分钟守护进程自愈。"
+    if [ "${mem_mb}" -le 1024 ]; then
+        echo -e "  * 💡 ${YELLOW}系统检测: 当前 VPS 物理内存为 ${mem_mb}MB (<= 1GB)，强烈推荐开启以彻底预防 OOM 崩溃！${PLAIN}"
+    fi
     read -r -p "是否立即激活该定时维护看门狗任务？[Y/n，默认 Y]: " DO_SETUP_CRON
     DO_SETUP_CRON=$(echo "${DO_SETUP_CRON:-y}" | tr '[:upper:]' '[:lower:]')
 fi
@@ -1205,6 +1224,13 @@ if [ -n "${AIMILIVPN_DOMAIN:-}" ]; then
     fi
     if aimili_cert_ready "${AIMILIVPN_DOMAIN}"; then
         echo -e "\n${GREEN}本地已有 ${AIMILIVPN_DOMAIN} 的证书，直接使用，不再重新申请。${PLAIN}"
+    elif [ "${CERT_VERIFY_MODE:-}" = "2" ] || [ -n "${CF_Token:-}" ]; then
+        echo -e "\n${YELLOW}正在通过 Cloudflare DNS-01 API 为 ${AIMILIVPN_DOMAIN} 申请免 80 端口证书...${PLAIN}"
+        if bash "${INSTALL_DIR}/scripts/manage_cert.sh" dns "${AIMILIVPN_DOMAIN}"; then
+            echo -e "${GREEN}Cloudflare DNS-01 域名证书已成功签发并安装！${PLAIN}"
+        else
+            echo -e "${YELLOW}Cloudflare DNS 申请未成功完成，继续尝试默认流程兜底...${PLAIN}"
+        fi
     else
         echo -e "\n${YELLOW}本地没有 ${AIMILIVPN_DOMAIN} 的证书，正在申请。失败则继续使用 IP 证书。${PLAIN}"
         cs=""; w=0

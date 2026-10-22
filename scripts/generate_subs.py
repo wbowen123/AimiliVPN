@@ -30,7 +30,34 @@ def generate_subscriptions(nodes_data, output_dir):
                 pass
 
     domain = nodes_data.get("domain", "")
-    host = domain if domain else public_ip
+    
+    # --------------------------------------------------------------------------
+    # 0. 双栈 DNS 物理隔离智能解析 (架构推荐最佳实践):
+    # 规范: direct 走真实 IP (关小黄云跑满千兆), cdn 走 CDN 破墙 (开小黄云破局免流)
+    # --------------------------------------------------------------------------
+    direct_host = domain if domain else public_ip
+    cdn_host = domain if domain else public_ip
+    if domain:
+        clean_d = domain.lower()
+        if clean_d.startswith("direct."):
+            base_d = clean_d[7:]
+            direct_host = clean_d
+            cdn_host = f"cdn.{base_d}"
+        elif clean_d.startswith("cdn."):
+            base_d = clean_d[4:]
+            direct_host = f"direct.{base_d}"
+            cdn_host = clean_d
+        else:
+            cand_direct = f"direct.{clean_d}"
+            try:
+                import socket
+                socket.gethostbyname(cand_direct)
+                direct_host = cand_direct
+            except Exception:
+                direct_host = domain
+            cdn_host = f"cdn.{clean_d}"
+
+    host = direct_host if direct_host else public_ip
     camouflage_sni = nodes_data.get("camouflage_domain", "gateway.icloud.com")
     public_key = nodes_data.get("public_key", "")
     short_id = nodes_data.get("short_id", "")
@@ -245,7 +272,7 @@ def generate_subscriptions(nodes_data, output_dir):
     # ==========================================================================
     # C. 生成 Cloudflare CDN 与 Argo 穿透节点 (注入 Anycast 优选 IP)
     # ==========================================================================
-    cdn_target_domain = argo_domain if argo_domain else (f"cdn.{domain}" if domain else "")
+    cdn_target_domain = argo_domain if argo_domain else cdn_host
 
     if cdn_target_domain or domain:
         active_cdn_host = cdn_target_domain if cdn_target_domain else domain
@@ -322,6 +349,7 @@ def generate_subscriptions(nodes_data, output_dir):
     clash_direct_names = [p["name"] for p in clash_proxies if "直连" in p["name"]]
     clash_resi_names = [p["name"] for p in clash_proxies if "住宅" in p["name"]]
     clash_cdn_names = [p["name"] for p in clash_proxies if "CDN" in p["name"]]
+    clash_tcp_names = [p["name"] for p in clash_proxies if "Reality" in p["name"] or "AnyTLS" in p["name"] or "VMess" in p["name"]]
     clash_all_names = [p["name"] for p in clash_proxies]
 
     proxy_groups = [
@@ -329,6 +357,14 @@ def generate_subscriptions(nodes_data, output_dir):
             "name": "🚀 极速原生 (自动优选)",
             "type": "url-test",
             "proxies": clash_direct_names if clash_direct_names else clash_all_names,
+            "url": "http://www.gstatic.com/generate_204",
+            "interval": 300,
+            "tolerance": 50
+        },
+        {
+            "name": "🛡️ 晚高峰抗QoS (TCP优先)",
+            "type": "url-test",
+            "proxies": clash_tcp_names if clash_tcp_names else clash_all_names,
             "url": "http://www.gstatic.com/generate_204",
             "interval": 300,
             "tolerance": 50
@@ -353,7 +389,7 @@ def generate_subscriptions(nodes_data, output_dir):
             "tolerance": 50
         })
 
-    group_select_candidates = ["🚀 极速原生 (自动优选)", "🏠 住宅家宽 (自动优选)"]
+    group_select_candidates = ["🚀 极速原生 (自动优选)", "🛡️ 晚高峰抗QoS (TCP优先)", "🏠 住宅家宽 (自动优选)"]
     if clash_cdn_names:
         group_select_candidates.append("⛅ CDN破墙 (自动优选)")
     group_select_candidates.append("⚡ 故障转移 (Fallback)")
@@ -548,18 +584,26 @@ def generate_subscriptions(nodes_data, output_dir):
     sb_direct_tags = [t for t in sb_all_tags if "直连" in t]
     sb_resi_tags = [t for t in sb_all_tags if "住宅" in t]
     sb_cdn_tags = [t for t in sb_all_tags if "CDN" in t]
+    sb_tcp_tags = [t for t in sb_all_tags if "Reality" in t or "AnyTLS" in t or "VMess" in t]
 
     singbox_selectors = [
         {
             "type": "selector",
             "tag": "🎯 手动选择",
-            "outbounds": ["🚀 极速原生 (自动优选)", "🏠 住宅家宽 (自动优选)"] + (["⛅ CDN破墙 (自动优选)"] if sb_cdn_tags else []) + ["⚡ 故障转移"] + sb_all_tags,
+            "outbounds": ["🚀 极速原生 (自动优选)", "🛡️ 晚高峰抗QoS (TCP优先)", "🏠 住宅家宽 (自动优选)"] + (["⛅ CDN破墙 (自动优选)"] if sb_cdn_tags else []) + ["⚡ 故障转移"] + sb_all_tags,
             "default": "🚀 极速原生 (自动优选)"
         },
         {
             "type": "urltest",
             "tag": "🚀 极速原生 (自动优选)",
             "outbounds": sb_direct_tags if sb_direct_tags else sb_all_tags,
+            "url": "https://www.gstatic.com/generate_204",
+            "interval": "3m"
+        },
+        {
+            "type": "urltest",
+            "tag": "🛡️ 晚高峰抗QoS (TCP优先)",
+            "outbounds": sb_tcp_tags if sb_tcp_tags else sb_all_tags,
             "url": "https://www.gstatic.com/generate_204",
             "interval": "3m"
         },

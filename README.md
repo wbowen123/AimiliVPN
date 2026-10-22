@@ -29,7 +29,7 @@ Bilingual: [中文](#中文) | [English](#english)
 
 ### 1. 系统名称与定位
 
-**Aimili VPN + Sing-box｜全协议双栈双出站节点管理系统 (V1.4.7)**
+**Aimili VPN + Sing-box｜全协议双栈双出站节点管理系统 (V1.4.8)**
 
 系统由三大模块组成：
 - **前端多协议代理矩阵（Sing-box）**：监听 443 (TCP Reality & UDP Hy2)、8443 (UDP TUIC)、8444 (TCP AnyTLS)、8445 (TCP VMess)，通过用户鉴权（`auth_user`）实现毫秒级双出站分流。
@@ -198,13 +198,24 @@ ml singbox  # Sing-box 核心管理（start/stop/restart/logs/status）
 
 ---
 
+### 9. 全套工程化最佳实践优化建议 (Architecture Recommendations)
+
+| 优化维度 | 现状与已实现能力 | 进阶运营与全套实操建议 |
+| :--- | :--- | :--- |
+| **1. 双栈 DNS 物理隔离** | 已内置 `ml dns` 指向指引，区分灰云（直连）与橙云（破墙） | **建议严格落实 4 条 DNS 记录**：`direct` 解析真实 IP4/V6 (关小黄云)，`cdn` 解析真实 IP4/V6 (开小黄云)，绝不将所有流量混杂在单一域名下。系统在生成订阅时会自动探测 `direct.<domain>` 并实现免配置隔离！ |
+| **2. 晚高峰抗 QoS 阻断** | 已支持 UDP 40000-50000 端口跳跃 + Salamander 混淆 | 遇到个别地区运营商严重扼杀 UDP 443 时，生成的客户端订阅内建 **`🛡️ 晚高峰抗QoS (TCP优先)`** 自动策略组，优先使用 `VLESS-Reality` (TCP)、`AnyTLS` 与 `VMess`；亦可开启 Hysteria 2 多端口跳跃。 |
+| **3. 内存与稳定性保护** | 已部署 GOMEMLIMIT 软上限计算 + 每日凌晨 4 点 drop_caches 释放缓存 | 低配小内存（如 512MB/1GB VPS）在安装向导与 `ml cron` 菜单中会自动高亮告警，**建议默认启用看门狗调度任务**，彻底根绝长期运行缓存堆积导致的 OOM 假死。 |
+| **4. 证书全自动维护** | 已集成 10年免维护 IP 证书 + 域名 ACME HTTP/DNS-01 续签 | 若使用域名且未开 80 端口（或 80 端口被运营商封锁），可通过安装向导或 `ml cert` 配置 Cloudflare API Token 走 **DNS-01 验证**，实现无需任何外网 80 端口即可静默自动申请与续签。 |
+
+---
+
 <a name="english"></a>
 
 ## English
 
 ### 1. System Overview
 
-**Aimili VPN + Sing-box | Full-Protocol Dual-Stack Dual-Outbound Matrix (V1.4.7)**
+**Aimili VPN + Sing-box | Full-Protocol Dual-Stack Dual-Outbound Matrix (V1.4.8)**
 
 This system combines the cutting-edge ingress proxy matrix of **Sing-box** with the dynamic residential egress of **AimiliVPN** and an automated multi-format subscription hub:
 - **Ingress Proxy Matrix (Sing-box)**: Delivers 5 major protocols on ports 443 (TCP Reality & UDP Hy2), 8443 (UDP TUIC), 8444 (TCP AnyTLS), and 8445 (TCP VMess). Fully supports **IPv4 & IPv6 dual-stack**, using user-level authentication (`auth_user`) to achieve instantaneous zero-downtime dual-outbound routing.
@@ -355,4 +366,4 @@ Subscription links available on `https://your-domain-or-ip:18443/`:
 
 ---
 
-**Version: V1.4.5 (Sing-box Dual-Outbound Enterprise Full-Stack Suite)**
+**Version: V1.4.8 (Sing-box Dual-Outbound Enterprise Full-Stack Suite)**
