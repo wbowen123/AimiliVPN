@@ -38,6 +38,7 @@ if ! lsmod | grep -q tcp_bbr; then
 fi
 
 # 3. 写入持久化 sysctl 配置
+mkdir -p /etc/sysctl.d
 SYSCTL_CONF="/etc/sysctl.d/99-aimilivpn-bbr.conf"
 
 cat > "$SYSCTL_CONF" <<'EOF'

@@ -289,7 +289,7 @@ aimili_uninstall() {
             kill "${p}" >/dev/null 2>&1
         done
     }
-    for u in aimilivpn aimilivpn-github-update.timer aimilivpn-github-update sing-box; do
+    for u in aimilivpn aimilivpn-github-update.timer aimilivpn-github-update sing-box cloudflared-argo aimilivpn-tgbot; do
         systemctl stop "$u" >/dev/null 2>&1
         systemctl disable "$u" >/dev/null 2>&1
     done
@@ -356,10 +356,13 @@ aimili_uninstall() {
         esac
         AIMILI_VPN_SVCS="${AIMILI_VPN_SVCS} ${vp}"
     done
-    rm -rf /var/lib/aimilivpn
-    # AimiliVPN 自己的 acme 续期任务删掉；证书缓存 /var/lib/aimilivpn-acme 保留，重装直接装、不重签
-    rm -f /etc/cron.d/aimilivpn-acme /run/lock/aimilivpn-cert.lock
-    rm -rf /etc/systemd/system/aimilivpn.service.d /opt/aimilivpn /etc/aimilivpn /var/www/aimilivpn-acme /var/www/aimilivpn-sub /etc/sing-box /etc/systemd/system/sing-box.service /usr/local/bin/sing-box
+    # AimiliVPN 自己的 acme 与维护任务删掉；证书缓存 /var/lib/aimilivpn-acme 保留，重装直接装、不重签
+    rm -f /etc/cron.d/aimilivpn-acme /etc/cron.d/aimilivpn-maintenance /var/log/aimilivpn-maintenance.log /var/log/cloudflared-argo.log /run/lock/aimilivpn-cert.lock
+    rm -rf /etc/systemd/system/aimilivpn.service.d /etc/systemd/system/cloudflared-argo.service /etc/systemd/system/aimilivpn-tgbot.service \
+        /opt/aimilivpn /etc/aimilivpn /var/www/aimilivpn-acme /var/www/aimilivpn-sub /var/www/camouflage \
+        /etc/sing-box /etc/systemd/system/sing-box.service /usr/local/bin/sing-box
+    iptables -t nat -D PREROUTING -p udp --dport 40000:50000 -j REDIRECT --to-ports 443 2>/dev/null || true
+    if command -v nft >/dev/null 2>&1; then nft delete table ip aimilivpn 2>/dev/null || true; fi
     systemctl daemon-reload >/dev/null 2>&1
     # 只删 AimiliVPN 自己的 nginx 站点（8443 管理入口 + ACME webroot），九合一的 nginx 配置不动。
     for f in /etc/nginx/conf.d/aimilivpn-production.conf /etc/nginx/conf.d/aimilivpn-acme.conf; do

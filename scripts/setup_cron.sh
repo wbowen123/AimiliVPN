@@ -107,20 +107,24 @@ run_watchdog() {
     local now
     now=$(date '+%Y-%m-%d %H:%M:%S')
 
-    # 1. 检查 Sing-box 服务
-    if ! systemctl is-active --quiet sing-box.service 2>/dev/null; then
-        echo "[${now}] [WATCHDOG] ⚠️ 发现 Sing-box 处于停止/异常状态，正在自动拉起自愈..."
-        systemctl restart sing-box.service || true
-        # 如果存在 TG Bot，则发送告警
-        if [[ -x "${INSTALL_DIR}/scripts/tg_bot.sh" ]]; then
-            "${INSTALL_DIR}/scripts/tg_bot.sh" alert "核心服务异常" "Sing-box 进程退出，看门狗已自动拉起重启。" || true
+    # 1. 检查 Sing-box 服务 (仅在服务已启用时守护自愈)
+    if [ "$(systemctl is-enabled sing-box.service 2>/dev/null || echo '')" = "enabled" ]; then
+        if ! systemctl is-active --quiet sing-box.service 2>/dev/null; then
+            echo "[${now}] [WATCHDOG] ⚠️ 发现 Sing-box 处于停止/异常状态，正在自动拉起自愈..."
+            systemctl restart sing-box.service || true
+            # 如果存在 TG Bot，则发送告警
+            if [[ -x "${INSTALL_DIR}/scripts/tg_bot.sh" ]]; then
+                "${INSTALL_DIR}/scripts/tg_bot.sh" alert "核心服务异常" "Sing-box 进程退出，看门狗已自动拉起重启。" || true
+            fi
         fi
     fi
 
-    # 2. 检查 AimiliVPN 基础管理服务
-    if ! systemctl is-active --quiet aimilivpn.service 2>/dev/null; then
-        echo "[${now}] [WATCHDOG] ⚠️ 发现 AimiliVPN 基础服务处于停止状态，正在自动拉起..."
-        systemctl restart aimilivpn.service || true
+    # 2. 检查 AimiliVPN 基础管理服务 (仅在服务已启用时守护自愈，尊重纯直连极简模式)
+    if [ "$(systemctl is-enabled aimilivpn.service 2>/dev/null || echo '')" = "enabled" ]; then
+        if ! systemctl is-active --quiet aimilivpn.service 2>/dev/null; then
+            echo "[${now}] [WATCHDOG] ⚠️ 发现 AimiliVPN 基础服务处于停止状态，正在自动拉起..."
+            systemctl restart aimilivpn.service || true
+        fi
     fi
 
     # 3. 检查公网 IP 变动

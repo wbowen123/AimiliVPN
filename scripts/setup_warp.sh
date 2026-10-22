@@ -282,6 +282,12 @@ EOF
     if command -v sing-box >/dev/null 2>&1; then
         if sing-box check -c "${SINGBOX_CONFIG}" >/dev/null 2>&1; then
             systemctl restart sing-box.service || true
+            cat > "${DATA_DIR}/warp_mode.json" <<MODE_EOF
+{
+  "mode": "${mode}",
+  "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+}
+MODE_EOF
             log_info "Sing-box 规则应用成功，服务已平滑重启！"
         else
             log_err "Sing-box 语法检测未通过，配置已安全回滚！"

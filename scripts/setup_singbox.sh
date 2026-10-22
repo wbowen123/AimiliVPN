@@ -522,6 +522,15 @@ else
     rm -f "$SB_CONFIG_BAK"
 fi
 
+# 9.5 自动平滑继承并挂载既有 WARP 解锁策略 (若曾配置过)
+if [ -f "$DATA_DIR/warp_mode.json" ] && [ -f "$ROOT_DIR/scripts/setup_warp.sh" ]; then
+    saved_warp_mode=$(python3 -c "import json; print(json.load(open('$DATA_DIR/warp_mode.json')).get('mode', ''))" 2>/dev/null || echo "")
+    if [ -n "$saved_warp_mode" ] && [ "$saved_warp_mode" != "off" ]; then
+        echo -e "${YELLOW}  -> 检测到已保存的 WARP 分流策略 (${saved_warp_mode})，正在平滑继承挂载...${PLAIN}"
+        bash "$ROOT_DIR/scripts/setup_warp.sh" "$saved_warp_mode" >/dev/null 2>&1 || true
+    fi
+fi
+
 # 10. 部署 Hysteria 2 端口跳跃转发规则 (Port Hopping: 40000-50000 -> 443)
 echo -e "${YELLOW}  -> 正在配置 Hysteria 2 端口跳跃重定向规则 (UDP 40000-50000 -> 443)...${PLAIN}"
 if command -v iptables >/dev/null 2>&1; then
