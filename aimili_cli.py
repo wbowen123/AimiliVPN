@@ -415,12 +415,18 @@ def interactive_menu():
         print(f"  {C_GREEN}[10]{C_RESET} 全自动节点连通性与健康诊断 (排查-1超时/端口/阻断) ({C_YELLOW}ml test{C_RESET})")
         print(f"  {C_GREEN}[11]{C_RESET} Sing-box 内核版本管理 (升级最新稳定版/切换指定版本) ({C_YELLOW}ml core{C_RESET})")
         print(f"  {C_GREEN}[12]{C_RESET} 域名 SSL 证书管理 (申请/续期/ZeroSSL/Cloudflare DNS API) ({C_YELLOW}ml cert{C_RESET})")
-        print(f"  {C_GREEN}[13]{C_RESET} 原生管理菜单 (修改密码/端口/更新/卸载)")
+        print(f"  {C_GREEN}[13]{C_RESET} Cloudflare Argo 隧道穿透 (免CF账号临时穿透/固定Token) ({C_YELLOW}ml argo{C_RESET})")
+        print(f"  {C_GREEN}[14]{C_RESET} Cloudflare WARP 双栈网络与流媒体解锁 (Native WireGuard) ({C_YELLOW}ml warp{C_RESET})")
+        print(f"  {C_GREEN}[15]{C_RESET} Cloudflare CDN 三网优选 IP 测速与替换 ({C_YELLOW}ml cf{C_RESET})")
+        print(f"  {C_GREEN}[16]{C_RESET} HTML5 本地高保真伪装网站模版库切换 ({C_YELLOW}ml camo{C_RESET})")
+        print(f"  {C_GREEN}[17]{C_RESET} Telegram Bot 节点与告警即时推送 ({C_YELLOW}ml tg{C_RESET})")
+        print(f"  {C_GREEN}[18]{C_RESET} 定时系统自愈与内存深度清理管理 ({C_YELLOW}ml cron{C_RESET})")
+        print(f"  {C_GREEN}[19]{C_RESET} 原生管理菜单 (修改密码/端口/更新/卸载)")
         print(f"  {C_RED}[0]{C_RESET} 退出控制台")
         print("=" * 60)
 
         try:
-            choice = input(f"{C_BOLD}请选择操作 [0-13]: {C_RESET}").strip()
+            choice = input(f"{C_BOLD}请选择操作 [0-19]: {C_RESET}").strip()
         except (KeyboardInterrupt, EOFError):
             print("\n已退出。")
             break
@@ -484,13 +490,55 @@ def interactive_menu():
                 print(f"{C_RED}未找到证书管理脚本: {cert_script}{C_RESET}")
             input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
         elif choice == "13":
+            argo_script = os.path.join(INSTALL_DIR, "scripts", "setup_argo.sh")
+            if os.path.exists(argo_script):
+                subprocess.call(["bash", argo_script])
+            else:
+                print(f"{C_RED}未找到 Argo 脚本: {argo_script}{C_RESET}")
+            input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
+        elif choice == "14":
+            warp_script = os.path.join(INSTALL_DIR, "scripts", "setup_warp.sh")
+            if os.path.exists(warp_script):
+                subprocess.call(["bash", warp_script])
+            else:
+                print(f"{C_RED}未找到 WARP 脚本: {warp_script}{C_RESET}")
+            input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
+        elif choice == "15":
+            cf_script = os.path.join(INSTALL_DIR, "scripts", "cf_speedtest.sh")
+            if os.path.exists(cf_script):
+                subprocess.call(["bash", cf_script])
+            else:
+                print(f"{C_RED}未找到优选测速脚本: {cf_script}{C_RESET}")
+            input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
+        elif choice == "16":
+            camo_script = os.path.join(INSTALL_DIR, "scripts", "setup_camouflage.sh")
+            if os.path.exists(camo_script):
+                subprocess.call(["bash", camo_script])
+            else:
+                print(f"{C_RED}未找到伪装网站脚本: {camo_script}{C_RESET}")
+            input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
+        elif choice == "17":
+            tg_script = os.path.join(INSTALL_DIR, "scripts", "tg_bot.sh")
+            if os.path.exists(tg_script):
+                subprocess.call(["bash", tg_script])
+            else:
+                print(f"{C_RED}未找到 TG Bot 脚本: {tg_script}{C_RESET}")
+            input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
+        elif choice == "18":
+            cron_script = os.path.join(INSTALL_DIR, "scripts", "setup_cron.sh")
+            if os.path.exists(cron_script):
+                subprocess.call(["bash", cron_script])
+            else:
+                print(f"{C_RED}未找到定时维护脚本: {cron_script}{C_RESET}")
+            input(f"\n{C_BLUE}按回车键返回菜单...{C_RESET}")
+        elif choice == "19":
             call_aimili_ml([])
             break
         elif choice in ["0", "q", "quit", "exit"]:
             print("已退出控制台。")
             break
         else:
-            print(f"{C_RED}无效选项，请输入 0 到 13 之间的数字。{C_RESET}")
+            print(f"{C_RED}无效选项，请输入 0 到 19 之间的数字。{C_RESET}")
 
 
 def main():
@@ -527,6 +575,54 @@ def main():
                 subprocess.call(["bash", cert_script] + args)
             else:
                 print(f"{C_RED}未找到证书管理脚本: {cert_script}{C_RESET}")
+            return
+        elif cmd in ["argo", "tunnel", "trycloudflare"]:
+            argo_script = os.path.join(INSTALL_DIR, "scripts", "setup_argo.sh")
+            if os.path.exists(argo_script):
+                args = sys.argv[2:] if len(sys.argv) > 2 else []
+                subprocess.call(["bash", argo_script] + args)
+            else:
+                print(f"{C_RED}未找到 Argo 脚本: {argo_script}{C_RESET}")
+            return
+        elif cmd in ["warp", "wireguard", "stream", "unlock"]:
+            warp_script = os.path.join(INSTALL_DIR, "scripts", "setup_warp.sh")
+            if os.path.exists(warp_script):
+                args = sys.argv[2:] if len(sys.argv) > 2 else []
+                subprocess.call(["bash", warp_script] + args)
+            else:
+                print(f"{C_RED}未找到 WARP 脚本: {warp_script}{C_RESET}")
+            return
+        elif cmd in ["cf", "speedtest", "cleanip", "anycast"]:
+            cf_script = os.path.join(INSTALL_DIR, "scripts", "cf_speedtest.sh")
+            if os.path.exists(cf_script):
+                args = sys.argv[2:] if len(sys.argv) > 2 else []
+                subprocess.call(["bash", cf_script] + args)
+            else:
+                print(f"{C_RED}未找到优选测速脚本: {cf_script}{C_RESET}")
+            return
+        elif cmd in ["camo", "camouflage", "template", "fake"]:
+            camo_script = os.path.join(INSTALL_DIR, "scripts", "setup_camouflage.sh")
+            if os.path.exists(camo_script):
+                args = sys.argv[2:] if len(sys.argv) > 2 else []
+                subprocess.call(["bash", camo_script] + args)
+            else:
+                print(f"{C_RED}未找到伪装网站脚本: {camo_script}{C_RESET}")
+            return
+        elif cmd in ["tg", "telegram", "bot", "notify"]:
+            tg_script = os.path.join(INSTALL_DIR, "scripts", "tg_bot.sh")
+            if os.path.exists(tg_script):
+                args = sys.argv[2:] if len(sys.argv) > 2 else []
+                subprocess.call(["bash", tg_script] + args)
+            else:
+                print(f"{C_RED}未找到 TG Bot 脚本: {tg_script}{C_RESET}")
+            return
+        elif cmd in ["cron", "auto", "maintenance", "watchdog"]:
+            cron_script = os.path.join(INSTALL_DIR, "scripts", "setup_cron.sh")
+            if os.path.exists(cron_script):
+                args = sys.argv[2:] if len(sys.argv) > 2 else []
+                subprocess.call(["bash", cron_script] + args)
+            else:
+                print(f"{C_RED}未找到定时维护脚本: {cron_script}{C_RESET}")
             return
         elif cmd in ["singbox", "sb"]:
             subcmd = sys.argv[2] if len(sys.argv) > 2 else "status"

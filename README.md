@@ -6,13 +6,19 @@ Bilingual: [中文](#中文) | [English](#english)
 1. **多协议公共住宅池管理**：统一采集与管理 OpenVPN、SoftEther、SSTP、L2TP 等多协议节点，提供持续可用性检测、真实连接延迟检测与 Web 管理；
 2. **全协议双出站分流架构 (Dual-Outbound Matrix)**：单节点支持 **VLESS-Reality、Hysteria 2、TUIC v5、AnyTLS、VMess-xHTTP** 5 大主流协议，一键下发包含 **“原生 VPS 高速直连 (5个)”** 与 **“Aimili 动态住宅家宽穿透 (5个)”** 的 10 大节点完整订阅；
 3. **全平台多格式订阅支持**：原生输出通用 Base64 (`sub.txt`)、Clash Meta / Mihomo (`clash.yaml` 内置自动延迟优选策略组)、以及 Sing-box 客户端开箱即用规则 (`singbox.json`)；
-4. **工业级可靠性加固 (借鉴 singbox-lite 架构)**：
+4. **Cloudflare 全生态无缝集成**：
+   - ☁️ **Argo 隧道穿透**：支持 Quick Tunnel (免CF账号临时穿透) 与 Named Token 隧道，破除 NAT、无公网 IP 限制；
+   - 🛡️ **WARP 双栈网络与流媒体解锁**：基于 Sing-box 原生 WireGuard 用户态出站，零侵入 VPS 主路由表，原生解锁 Netflix、Disney+、OpenAI/ChatGPT；
+   - ⚡ **CDN 三网优选 IP 测速**：内置电信/联通/移动亚太低延迟 Anycast 测速算法，一键替换节点连接 IP，告别晚高峰减速；
+5. **主动探测防御与自动化运维**：
+   - 🎭 **HTML5 高保真本地伪装库**：内置科技云 SaaS、开发者工具箱/计算器、极客博客、2048 小游戏等 4 套可交互模板，完美抵御主动嗅探；
+   - 🤖 **Telegram Bot 即时推送**：支持节点订阅一键下发至 TG、公网 IP 漂移告警、核心进程崩溃拉起告警；
+   - ⏰ **定时系统自愈与内存清理**：每日凌晨 4 点强制内核缓存释放 (`drop_caches`)、权威 HTTPS 时钟校准、15分钟进程看门狗；
+6. **工业级可靠性加固**：
    - 🛡️ **GOMEMLIMIT 软内存限制**：针对 128MB/512MB/1GB 等小内存/NAT VPS，动态测算 Go 堆内存配额，根除 OOM 崩溃；
    - 🔄 **事务快照与原子回滚**：配置更新遵循“备份 $\to$ 临时写入 $\to$ sing-box check 预检 $\to$ 原子替换 $\to$ 健康监控 $\to$ 异常秒级回滚”闭环；
-   - ⏱️ **高精度时间同步与补偿**：内置 `check_time_sync.sh` 对齐权威 HTTPS 响应头，消除 $>15$ 秒时钟漂移导致的 Reality 握手超时；
-   - 🐳 **容器虚拟化自适应**：智能探测 Docker/LXC 容器环境，非特权模式自动降级权能要求，确保平顺拉起；
-   - 🌪️ **端口跳跃与 Salamander 混淆**：Hysteria 2 支持 UDP 40000-50000 端口范围映射与 Salamander 混淆，破解晚高峰运营商 QoS 限速；
-   - 🏠 **住宅出口双模切换**：支持随时在“AimiliVPN 内置动态家宽池”与“用户自有第三方商业 SOCKS5 代理”间无缝切换。
+   - ⏱️ **高精度时间同步与补偿**：内置 `check_time_sync.sh` 对齐权威 HTTPS 响应头，消除 $>15$ 秒时钟漂移导致的握手超时；
+   - 🌪️ **端口跳跃与 Salamander 混淆**：Hysteria 2 支持 UDP 40000-50000 端口范围映射与 Salamander 混淆，破解晚高峰运营商 QoS 限速。
 
 <a name="中文"></a>
 
@@ -49,79 +55,64 @@ Bilingual: [中文](#中文) | [English](#english)
 bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/install.sh)
 ```
 
-安装脚本交互提示：
-1. **安装选项**：输入 `1` 安装；
-2. **域名配置**：已有解析到本机的域名请输入，无域名可直接回车（自动使用 VPS 公网 IP 自签证书）；
-3. **Sing-box 核心**：回车默认安装 Sing-box（推荐），回车使用默认伪装域名 `gateway.icloud.com`。
-
-安装完成后，终端将自动输出：
-- HTTPS 网页管理后台地址、账号、密码及安全路径；
-- **全格式订阅入口**（`sub.txt`、`clash.yaml`、`singbox.json`、`nodes.txt`）；
-- 10 大节点矩阵完整链接。
-
 #### 常用管理命令
 
 系统提供全局快捷命令 `ml` 随时管理：
 ```bash
-ml          # 启动全新交互式双核心管理控制台（支持查看节点、控制服务等）
+ml          # 启动全新交互式双核心管理控制台（支持 19 项专业运维）
 ml sub      # 终端快速打印 10 大节点矩阵与 HTTPS 全生态订阅卡片
 ml web      # 查看网页控制面板地址、安全后缀、管理员账号与密码
 ml test     # 全自动节点连通性与健康诊断（排查 -1 超时、端口监听与阻断根因）
 ml core     # Sing-box 内核管理（一键升级最新稳定版、选择历史版本）
 ml cert     # 域名 SSL 证书管理（申请/续期/ZeroSSL/Cloudflare DNS API 免80端口）
+ml argo     # Cloudflare Argo 隧道穿透（免CF账号临时穿透/固定Token穿透）
+ml warp     # Cloudflare WARP 双栈网络管理（流媒体/OpenAI原生分流解锁）
+ml cf       # Cloudflare Anycast CDN 三网优选 IP 测速与替换
+ml camo     # HTML5 本地高保真伪装网站模版库切换（4 套交互式模版）
+ml tg       # Telegram Bot 节点下发与异常实时告警配置
+ml cron     # 定时系统自愈、凌晨内存释放与 15 分钟看门狗管理
 ml egress   # 配置住宅出口模式（内置Aimili家宽池 / 外接第三方商业SOCKS5）
 ml status   # 查看 AimiliVPN 运行状态与当前活跃住宅节点
 ml logs     # 查看 AimiliVPN 实时拨号与隧道日志
 ml restart  # 重启 AimiliVPN 住宅网关
 ml singbox  # Sing-box 核心管理（start/stop/restart/logs/status）
-
-# 快速重新部署 Sing-box 核心或更新订阅
-bash /opt/aimilivpn/scripts/setup_singbox.sh
 ```
 
-#### 完全卸载
+### 4. 高阶功能体系详解
 
-```bash
-ml uninstall
-# 或
-bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/install.sh) uninstall
-```
+#### (1) Cloudflare Argo 隧道穿透 (`ml argo`)
+- **临时穿透 (Quick Tunnel)**：无需 Cloudflare 账号，自动拉起 cloudflared 并捕获 `https://*.trycloudflare.com` 穿透域名，直接穿透本地代理端口，无公网 IP 或 NAT 阻断下仍可顺畅破墙。
+- **固定隧道 (Named Tunnel)**：直接输入 Cloudflare Zero Trust 申请的 Token，以 systemd 服务稳定常驻，域名永久固定。
 
-### 4. 快速使用与 10 大节点订阅矩阵
+#### (2) Cloudflare WARP 双栈网络与流媒体解锁 (`ml warp`)
+- **用户态原生分流**：采用 Sing-box 原生 WireGuard 出站能力，**绝不篡改宿主机默认路由表**，绝不导致 VPS SSH 断联。
+- **智能规则分流**：精准针对 Netflix、Disney+、OpenAI/ChatGPT、YouTube、TikTok 走 WARP 出口，其余流量保持原生千兆直连，兼顾极速与流媒体解锁。
 
-1. **导入订阅**：
-   - 复制安装完成后输出的 **HTTPS 订阅链接**：`https://你的域名或IP:18443/sub.txt`（或 `https://你的域名或IP:8443/sub/sub.txt`）；
-   - **Clash 专属订阅**：`https://你的域名或IP:18443/clash.yaml`（内置自动延迟优选与策略组）；
-   - **Sing-box 专属订阅**：`https://你的域名或IP:18443/singbox.json`；
-   - 将链接导入到客户端（V2rayN、Clash Verge / Mihomo、Sing-box、Shadowrocket、Loon、Quantumult X 等）。
-2. **节点选择与分流说明**：
-   - **🚀 [直连-极速] (5个协议)**：
-     * 流量由您的 VPS 物理网卡直接送出；
-     * 延迟最低（几十毫秒），跑满 VPS 物理千兆带宽，适合 YouTube 4K/8K、Steam、大文件下载与日常访问。
-   - **🏠 [住宅-家宽] (5个协议)**：
-     * 流量进入 VPS 后，由 Sing-box 自动分流转发至 `127.0.0.1:8500`（或配置的外部 SOCKS5 落地代理），以目标国家的住宅/家宽 IP 出站；
-     * 适合访问 ChatGPT、Claude、特定海外流媒体、账号注册及高风控检测场景。
-3. **切换住宅出口国家**：
-   - 登录后台管理页面 `https://你的域名或IP:8443/安全后缀/`；
-   - 在节点列表中按国家（美国、日本、英国等）、延迟筛选，点击“切换”；
-   - AimiliVPN 会自动在新隧道验证成功后平滑切换，客户端无需重新连接，所有住宅节点的出站 IP 自动变为新国家。
+#### (3) Cloudflare CDN 三网优选 IP 测速 (`ml cf`)
+- 内置涵盖中国电信、中国联通、中国移动亚太低延迟 Anycast 优选段。
+- 自动进行 443 端口 TCP 延迟与丢包率测速，自动排序并一键保存最优 IP，配合 SNI 域名伪装，彻底破解国内晚高峰 QoS 限速。
 
-### 5. HTTPS 与域名证书管理
+#### (4) HTML5 本地高保真伪装网站模版库 (`ml camo`)
+- 提供 4 套无需外网依赖、纯本地加载的可交互真实站点：
+  1. **现代科技云原生 SaaS 官网** (Aether Cloud 平台)
+  2. **在线全功能开发者工具箱与计算器** (真实可算数、Base64 编解码)
+  3. **极简极客技术博客** (Ray's Engineering Notes 架构手记)
+  4. **经典 HTML5 2048 益智小游戏** (键盘/触屏真实可玩)
+- 配合 Nginx 443 回退，彻底消除审查机构的主动探测风险。
 
-- **没有绑定域名**：使用 `https://服务器IP:8443/安全后缀/`，安装器自动提供 ECC P-256 IP 自签名证书。
-- **绑定或更换域名**：随时在终端运行 `ml cert`，支持：
-  1. **HTTP-01 模式**：通过 80 端口一键申请 Let's Encrypt / ZeroSSL 官方权威证书；
-  2. **Cloudflare DNS API 模式**：输入 Cloudflare API Token 纯 DNS 解析申请，**无需开放 80 端口，并支持 `*.domain.com` 泛域名通配符证书**；
-  3. **强制续期与自动重载**：证书更新后自动分发至 Nginx 与 Sing-box 并热重载，永不过期。
+#### (5) Telegram Bot 节点与告警即时推送 (`ml tg`)
+- 配置 Bot Token 与 Chat ID 即可实现：
+  - 一键将 10 大节点与全生态订阅推送到个人 Telegram；
+  - 服务器公网 IP 变动时自动更新订阅并触发推送；
+  - 核心进程（Sing-box / AimiliVPN）异常崩溃时实时告警。
 
-### 6. 常见问题与客户端显示 -1 排查
-
-* **客户端测试节点显示 -1 (超时)**：
-  - 请立即运行 `ml test` 执行全自动化诊断；
-  - **最常见原因**：云服务商（AWS Lightsail、Oracle Cloud、阿里云、腾讯云等）控制台的安全组未开放入站端口。请在云后台放行 TCP `443, 8444, 8445, 18443` 和 UDP `443, 8443, 40000-50000`；
-  - 若仅 `[住宅-家宽]` 报 -1，表示 AimiliVPN 正在拨号或切换节点，运行 `ml logs` 查看拨号进度或后台切换可用节点。
-* **网页出现 502 Bad Gateway**：
-  - 通常表示内部 Python 服务 `127.0.0.1:8501` 正在启动中，数秒后刷新即可。
+#### (6) 定时系统自愈与内存深度清理 (`ml cron`)
+- **每日凌晨 04:00 深度维护**：
+  - `sync && echo 3 > /proc/sys/vm/drop_caches` 释放缓存，防止小内存 VPS (512MB/1GB) OOM；
+  - 调用 HTTPS 权威时钟同步，消除时钟漂移；
+  - 检测 SSL 证书有效期并自动续期；
+  - 清理过期 journalctl 历史日志，杜绝磁盘打满。
+- **每 15 分钟看门狗**：巡检核心服务并秒级自愈拉起。
 
 ---
 
@@ -135,7 +126,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/insta
 
 This system combines the cutting-edge ingress of **Sing-box** with the global residential egress of **AimiliVPN**:
 - **Ingress Proxy Matrix (Sing-box)**: Delivers 5 major protocols on ports 443 (TCP Reality & UDP Hy2), 8443 (UDP TUIC), 8444 (TCP AnyTLS), and 8445 (TCP VMess). Uses user-level authentication (`auth_user`) to achieve instantaneous zero-downtime dual-outbound routing.
-- **Residential Egress Bridge (AimiliVPN)**: Dynamically maintains global public/residential relay tunnels (OpenVPN, SoftEther, SSTP, L2TP), providing a local SOCKS5 bridge on `127.0.0.1:8500` or integrating third-party commercial residential proxies.
+- **Residential Egress Bridge (AimiliVPN)**: Dynamically maintains global public/residential relay tunnels, providing a local SOCKS5 bridge on `127.0.0.1:8500` or integrating third-party commercial residential proxies.
 
 ### 2. Port & Protocol Architecture
 
@@ -164,12 +155,18 @@ bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/insta
 
 Manage your server at any time with `ml`:
 ```bash
-ml          # Launch interactive dual-core management console
+ml          # Launch interactive dual-core management console (19 options)
 ml sub      # Print 10-node matrix and HTTPS subscription URLs
 ml web      # Display web dashboard URL, secret path, and credentials
 ml test     # Run automated health check & troubleshooting for -1 errors
 ml core     # Sing-box core manager (upgrade to latest, switch versions)
 ml cert     # SSL/TLS cert manager (HTTP-01, Cloudflare DNS API, force renew)
+ml argo     # Cloudflare Argo tunnel manager (Quick tunnel & Named Token)
+ml warp     # Cloudflare WARP dual-stack manager (Streaming/AI unlock)
+ml cf       # Cloudflare Anycast CDN clean IP tester and selector
+ml camo     # HTML5 local high-fidelity camouflage templates switcher
+ml tg       # Telegram Bot notifications & alerts dispatcher
+ml cron     # Automated self-healing, cache flush, and 15-min watchdog
 ml egress   # Toggle residential egress (internal pool vs external SOCKS5)
 ml status   # View AimiliVPN status and active residential IP
 ml logs     # Tail real-time VPN dialer and tunnel logs
@@ -177,25 +174,21 @@ ml restart  # Restart AimiliVPN residential daemon
 ml singbox  # Sing-box service management (start/stop/restart/logs/status)
 ```
 
-#### Complete Uninstall
+### 4. Advanced Feature Matrix
 
-```bash
-ml uninstall
-# or
-bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/install.sh) uninstall
-```
-
-### 4. 10-Node Matrix & Subscription Links
-
-- **General Base64 Subscription**: `https://YOUR_DOMAIN_OR_IP:18443/sub.txt`
-- **Clash Meta / Mihomo Subscription**: `https://YOUR_DOMAIN_OR_IP:18443/clash.yaml` (Built-in auto-latency selector groups)
-- **Sing-box Client Subscription**: `https://YOUR_DOMAIN_OR_IP:18443/singbox.json`
-
-Each subscription delivers:
-1. **🚀 [Direct-Gigabit] (5 nodes)**: Exits through VPS physical interface. Uncapped gigabit bandwidth for YouTube 4K/8K, gaming, and downloads.
-2. **🏠 [Residential-ISP] (5 nodes)**: Routed via residential tunnel. Exits through genuine residential IPs for ChatGPT, Claude, streaming, and anti-fraud bypassing.
+1. **Cloudflare Argo Tunnel (`ml argo`)**:
+   - Quick Tunnel (free temporary `*.trycloudflare.com` tunnel without CF account) & Named Tunnel (permanent token). Bypasses NAT & restrictive firewalls.
+2. **Cloudflare WARP Dual-Stack Ingress (`ml warp`)**:
+   - Implemented via Sing-box native WireGuard outbound without kernel modification or SSH routing disruption. Seamlessly unlocks OpenAI, Netflix, Disney+, and TikTok.
+3. **Cloudflare Clean IP Selector (`ml cf`)**:
+   - Measures TCP 443 round-trip time across global Anycast clusters (Telecom/Unicom/Mobile). Solves evening congestion on CF proxied nodes.
+4. **HTML5 Camouflage Sites (`ml camo`)**:
+   - Deploys 4 realistic, fully interactive HTML5 templates (SaaS Platform, Online Developer Tools & Calculator, Tech Blog, 2048 Game) to neutralize active probe attacks.
+5. **Telegram Bot Dispatcher (`ml tg`)**:
+   - Directly broadcasts node subscription links to your Telegram and sends instant push notifications upon VPS IP migration or core crashes.
+6. **Self-Healing Cron Scheduler (`ml cron`)**:
+   - Nightly 04:00 AM cache release (`drop_caches`), authoritative HTTPS clock sync, cert auto-renewal, and 15-minute process watchdog.
 
 ---
 
-**Version: V1.3.0 (Sing-box Dual-Outbound Enterprise Hardened)**
-
+**Version: V1.4.0 (Sing-box Dual-Outbound Enterprise Full-Stack Suite)**

@@ -90,6 +90,35 @@ def generate_subscriptions(nodes_data, output_dir):
     vmess_r = "vmess://" + base64.b64encode(json.dumps(vmess_obj_r).encode("utf-8")).decode("utf-8")
     links.extend([vmess_d, vmess_r])
 
+    # 1.6 Cloudflare Argo 隧道专用穿透节点 (若已激活)
+    data_dir_path = "/opt/aimilivpn/vpngate_data"
+    argo_file = os.path.join(data_dir_path, "argo_info.json")
+    if os.path.exists(argo_file):
+        try:
+            with open(argo_file, "r", encoding="utf-8") as af:
+                argo_data = json.load(af)
+                argo_domain = argo_data.get("domain", "")
+                if argo_domain:
+                    clean_ip = "104.16.160.10"
+                    clean_file = os.path.join(data_dir_path, "cf_clean_ip.txt")
+                    if os.path.exists(clean_file):
+                        try:
+                            with open(clean_file, "r", encoding="utf-8") as cff:
+                                c = cff.read().strip()
+                                if c:
+                                    clean_ip = c
+                        except Exception:
+                            pass
+                    argo_ps = "☁️ [Argo-隧道] VMess-WS (Cloudflare全球穿透)"
+                    vmess_argo_obj = {
+                        "v": "2", "ps": argo_ps, "add": clean_ip, "port": 443,
+                        "id": direct_uuid, "aid": 0, "net": "ws", "type": "none",
+                        "host": argo_domain, "path": "/vmess-ws", "tls": "tls", "sni": argo_domain
+                    }
+                    links.append("vmess://" + base64.b64encode(json.dumps(vmess_argo_obj).encode("utf-8")).decode("utf-8"))
+        except Exception:
+            pass
+
     # --------------------------------------------------------------------------
     # 2. 输出 Base64 订阅文件 (sub.txt) 与 明文列表 (nodes.txt)
     # --------------------------------------------------------------------------
