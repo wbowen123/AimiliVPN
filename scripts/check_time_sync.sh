@@ -48,10 +48,15 @@ fi
 LOCAL_EPOCH=$(date +%s)
 DRIFT=$((LOCAL_EPOCH - REMOTE_EPOCH))
 ABS_DRIFT=${DRIFT#-}
+ACTION="${1:-auto}"
 
 echo -e "  -> 本地时间: $(date -u '+%Y-%m-%d %H:%M:%S UTC') | 标准时间偏差: ${ABS_DRIFT} 秒"
 
-if [ "$ABS_DRIFT" -gt 15 ]; then
+if [ "$ACTION" = "check" ]; then
+    exit 0
+fi
+
+if [ "$ABS_DRIFT" -gt 15 ] || [ "$ACTION" = "fix" ]; then
     echo -e "${YELLOW}警告: 检测到系统时钟偏差过大 (${ABS_DRIFT}s > 15s)，可能导致 Reality/TLS 握手失败，正在自动校准...${PLAIN}"
     if [ "$(id -u)" = "0" ]; then
         # 1. 尝试 chrony / timedatectl

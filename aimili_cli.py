@@ -87,6 +87,43 @@ def get_domain():
     return ""
 
 
+def get_web_auth_data():
+    """读取网页控制面板认证信息与访问地址"""
+    data = {}
+    if os.path.exists(AUTH_FILE):
+        try:
+            with open(AUTH_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            pass
+
+    username = data.get("username", "admin")
+    password = data.get("password", "admin")
+    secret_path = data.get("secret_path", "").strip("/")
+    web_domain = data.get("web_domain", "").strip() or get_domain()
+    public_ip = get_public_ip()
+    host = web_domain if web_domain else public_ip
+
+    port = data.get("port", 8443)
+    if secret_path:
+        web_url = f"https://{host}:{port}/{secret_path}/"
+        fallback_url = f"https://{public_ip}:{port}/{secret_path}/" if web_domain else web_url
+    else:
+        web_url = f"https://{host}:{port}/"
+        fallback_url = f"https://{public_ip}:{port}/" if web_domain else web_url
+
+    return {
+        "username": username,
+        "password": password,
+        "secret_path": secret_path,
+        "web_domain": web_domain,
+        "public_ip": public_ip,
+        "port": port,
+        "web_url": web_url,
+        "fallback_url": fallback_url
+    }
+
+
 def get_subscription_data():
     """读取已生成的全协议节点与全生态订阅配置"""
     data = {}
@@ -161,6 +198,28 @@ def print_terminal_qr(content, title="全生态聚合订阅二维码 (手机扫�
         print(f"  * 订阅/节点 URL: {C_YELLOW}{content}{C_RESET}")
         print(f"  * 提示: 安装 qrencode 后可在终端直接显示二维码: {C_GREEN}apt-get install -y qrencode{C_RESET}")
         print(f"{C_BOLD}{C_BLUE}======================================================================{C_RESET}\n")
+
+
+def print_web_dashboard():
+    """格式化打印网页控制面板信息与认证凭据"""
+    auth = get_web_auth_data()
+    statuses = get_service_statuses()
+
+    print(f"\n{C_GREEN}======================================================================{C_RESET}")
+    print(f"{C_BOLD}{C_GREEN}            🌐 AimiliVPN 可视化网页管理面板信息{C_RESET}")
+    print(f"{C_GREEN}======================================================================{C_RESET}")
+    print(f"  * Nginx 前端状态:   {statuses['nginx']}")
+    print(f"  * 管理后台地址:     {C_BOLD}{C_BLUE}{auth['web_url']}{C_RESET}")
+    if auth.get("web_domain") and auth.get("public_ip"):
+        print(f"  * 纯 IP 备用地址:   {C_BLUE}{auth['fallback_url']}{C_RESET}")
+    print(f"  * 管理员账号:       {C_YELLOW}{auth['username']}{C_RESET}")
+    print(f"  * 管理员密码:       {C_YELLOW}{auth['password']}{C_RESET}")
+    if auth.get("secret_path"):
+        print(f"  * 防扫描动态后缀:   {C_BLUE}/{auth['secret_path']}/{C_RESET}")
+    print(f"----------------------------------------------------------------------")
+    print(f"  💡 提示: 面板支持动态住宅节点切换、分流模式管理与系统监控")
+    print(f"  💡 修改密码可在管理控制台执行: {C_YELLOW}ml password{C_RESET}")
+    print(f"{C_GREEN}======================================================================{C_RESET}\n")
 
 
 def print_subscription_card():

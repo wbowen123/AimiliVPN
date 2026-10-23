@@ -38,7 +38,11 @@ check_single_domain() {
     # 2. 如果系统有 openssl，校验 TLS 1.3 支持
     if command -v openssl >/dev/null 2>&1; then
         local tls_check
-        tls_check=$(echo | timeout 3 openssl s_client -tls1_3 -connect "${domain}:443" -servername "${domain}" 2>&1 || true)
+        if command -v timeout >/dev/null 2>&1; then
+            tls_check=$(echo | timeout 3 openssl s_client -tls1_3 -connect "${domain}:443" -servername "${domain}" 2>&1 || true)
+        else
+            tls_check=$(echo | openssl s_client -tls1_3 -connect "${domain}:443" -servername "${domain}" 2>&1 || true)
+        fi
         if ! echo "$tls_check" | grep -qi "TLSv1.3"; then
             return 1
         fi

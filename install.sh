@@ -615,7 +615,7 @@ if [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -t 0 ]; then
         if [ -z "${SINGBOX_CAMOUFLAGE}" ]; then
             echo -e "\n${BOLD}${BLUE}【VLESS-Reality 极速直连伪装目标】${PLAIN}"
             read -r -p "请输入 Reality 伪装域名 [直接按回车由系统自动执行延迟优选]: " SINGBOX_CAMOUFLAGE
-            SINGBOX_CAMOUFLAGE=$(printf '%s' "${SINGBOX_CAMOUFLAGE}" | tr -d '[:space:]')
+            SINGBOX_CAMOUFLAGE=$(printf '%s' "${SINGBOX_CAMOUFLAGE}" | tr -d '[:space:]' | tr -cd 'a-zA-Z0-9.-')
         fi
     fi
 
@@ -900,27 +900,18 @@ fi
 if ! grep -q '^MAX_PROXY_CONNECTIONS=' "$PROXY_ENV_FILE"; then
     echo 'MAX_PROXY_CONNECTIONS="64"' >> "$PROXY_ENV_FILE"
 fi
+if [ -n "${AIMILIVPN_DOMAIN:-}" ]; then
+    if grep -q '^AIMILIVPN_DOMAIN=' "$PROXY_ENV_FILE"; then
+        sed -i "s|^AIMILIVPN_DOMAIN=.*|AIMILIVPN_DOMAIN=\"${AIMILIVPN_DOMAIN}\"|" "$PROXY_ENV_FILE"
+    else
+        echo "AIMILIVPN_DOMAIN=\"${AIMILIVPN_DOMAIN}\"" >> "$PROXY_ENV_FILE"
+    fi
+fi
 chmod 600 "$PROXY_ENV_FILE"
 echo -e "${GREEN}  -> 本地代理默认: SOCKS5 127.0.0.1:8500${PLAIN}"
 echo -e "${GREEN}  -> 账号: socks5 / 密码: ilovestudy${PLAIN}"
 
 install -m 755 "${INSTALL_DIR}/github_update.sh" /usr/local/sbin/aimilivpn-github-update
-
-if [ -f "${INSTALL_DIR}/aimili_cli.py" ]; then
-    cat > /usr/bin/ml <<'EOF'
-#!/usr/bin/env python3
-import sys
-sys.path.insert(0, "/opt/aimilivpn")
-try:
-    import aimili_cli
-    aimili_cli.main()
-except Exception as e:
-    sys.stderr.write(f"执行出错: {e}\n")
-    raise SystemExit(1)
-EOF
-    chmod +x /usr/bin/ml
-    ln -sf /usr/bin/ml /usr/local/bin/ml 2>/dev/null || true
-fi
 
 cat > /etc/systemd/system/aimilivpn-github-update.service <<'UNIT'
 [Unit]
@@ -1097,9 +1088,9 @@ net.ipv4.conf.all.rp_filter = 2
 net.ipv4.conf.default.rp_filter = 2
 net.ipv4.ip_forward = 1
 net.ipv6.conf.all.forwarding = 1
-net.core.somaxconn = 1024
-net.core.rmem_max = 16777216
-net.core.wmem_max = 16777216
+net.core.somaxconn = 32768
+net.core.rmem_max = 67108864
+net.core.wmem_max = 67108864
 net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_mtu_probing = 1
 EOF

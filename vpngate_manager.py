@@ -51,7 +51,16 @@ def _apply_patches(mod):
     TG_HANDLE = "@wbowen"
     USER_BRAND = "wbowen123"
     REPO_NAME = "wbowen123/AimiliVPN"
-    VERSION_TAG = "V1.2.0"
+
+    v_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "VERSION")
+    if os.path.exists(v_file):
+        try:
+            with open(v_file, "r", encoding="utf-8") as vf:
+                VERSION_TAG = vf.read().strip()
+        except Exception:
+            VERSION_TAG = "V1.4.8"
+    else:
+        VERSION_TAG = "V1.4.8"
 
     def _get_commit():
         commit = ""
@@ -162,7 +171,7 @@ def _apply_patches(mod):
             orig_sj = handler_cls.send_json
             def custom_sj(self, data, *args, **kwargs):
                 if isinstance(data, dict):
-                    if "current_version" in data or "latest_version" in data or "has_update" in data:
+                    if "current_version" in data or "latest_version" in data:
                         commit = _get_commit()
                         if not commit and "current_version" in data:
                             parts = str(data["current_version"]).split(" - ")
@@ -170,11 +179,7 @@ def _apply_patches(mod):
                                 commit = parts[1].split()[0]
                         label = f"{VERSION_TAG} - {commit} (wbowen123)" if commit else f"{VERSION_TAG} (wbowen123)"
                         data["current_version"] = label
-                        data["latest_version"] = label
                         data["repository"] = REPO_NAME
-                        data["has_update"] = False
-                        data["relation"] = "up_to_date"
-                        data["message"] = f"当前已经是最新正式版（{VERSION_TAG} · wbowen123）。"
                 return orig_sj(self, data, *args, **kwargs)
             handler_cls.send_json = custom_sj
 

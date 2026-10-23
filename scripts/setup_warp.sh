@@ -164,7 +164,8 @@ apply_warp_to_singbox() {
         register_warp_account
     fi
 
-    log_info "正在配置 Sing-box 原生 WireGuard 出站与分流规则 (模式: ${mode})..."
+    # 建立配置事务备份，防止配置损坏导致 sing-box 假死
+    cp -f "${SINGBOX_CONFIG}" "${SINGBOX_CONFIG}.bak"
 
     python3 - "${SINGBOX_CONFIG}" "${WARP_JSON}" "${mode}" <<'EOF'
 import sys
@@ -226,9 +227,19 @@ for r in rules:
         continue
     if "residential-user" in r.get("auth_user", []):
         continue
-    if "direct-user" in r.get("auth_user", []) and not r.get("geosite") and not r.get("network"):
+    if "direct-user" in r.get("auth_user", []) and not r.get("geosite") and not r.get("domain_suffix") and not r.get("network"):
         continue
     cleaned_rules.append(r)
+
+ai_suffixes = [
+    "openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com",
+    "anthropic.com", "claude.ai"
+]
+stream_suffixes = [
+    "netflix.com", "nflxext.com", "nflxvideo.net", "nflximg.net",
+    "disneyplus.com", "disney.com", "dssott.com",
+    "tiktok.com", "byteoversea.com", "ibytedtos.com"
+]
 
 warp_rule = None
 if mode.startswith("custom:"):
@@ -237,24 +248,19 @@ if mode.startswith("custom:"):
     if sites:
         warp_rule = {
             "auth_user": ["direct-user"],
-            "geosite": sites,
+            "domain_suffix": sites,
             "outbound": "warp-out"
         }
 elif mode == "ai":
     warp_rule = {
         "auth_user": ["direct-user"],
-        "geosite": ["openai"],
+        "domain_suffix": ai_suffixes,
         "outbound": "warp-out"
     }
 elif mode == "stream":
     warp_rule = {
         "auth_user": ["direct-user"],
-        "geosite": [
-            "openai",
-            "netflix",
-            "disney",
-            "tiktok"
-        ],
+        "domain_suffix": ai_suffixes + stream_suffixes,
         "outbound": "warp-out"
     }
 elif mode == "global":
@@ -281,6 +287,7 @@ EOF
 
     if command -v sing-box >/dev/null 2>&1; then
         if sing-box check -c "${SINGBOX_CONFIG}" >/dev/null 2>&1; then
+            rm -f "${SINGBOX_CONFIG}.bak"
             systemctl restart sing-box.service || true
             cat > "${DATA_DIR}/warp_mode.json" <<MODE_EOF
 {
@@ -291,8 +298,14 @@ MODE_EOF
             log_info "Sing-box 规则应用成功，服务已平滑重启！"
         else
             log_err "Sing-box 语法检测未通过，配置已安全回滚！"
+            if [[ -f "${SINGBOX_CONFIG}.bak" ]]; then
+                cp -f "${SINGBOX_CONFIG}.bak" "${SINGBOX_CONFIG}"
+                rm -f "${SINGBOX_CONFIG}.bak"
+            fi
             return 1
         fi
+    else
+        rm -f "${SINGBOX_CONFIG}.bak"
     fi
 }
 

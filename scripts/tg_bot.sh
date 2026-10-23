@@ -9,7 +9,6 @@ set -e
 INSTALL_DIR="/opt/aimilivpn"
 DATA_DIR="${INSTALL_DIR}/vpngate_data"
 TG_JSON="${DATA_DIR}/tg_bot.json"
-SERVICE_FILE="/etc/systemd/system/aimilivpn-tgbot.service"
 
 C_RED="\033[0;31m"
 C_GREEN="\033[0;32m"
@@ -73,10 +72,13 @@ try:
         res = json.loads(resp.read().decode('utf-8'))
         if res.get("ok"):
             print("OK")
+            sys.exit(0)
         else:
-            print("ERR: " + str(res.get("description")))
+            print("ERR: " + str(res.get("description")), file=sys.stderr)
+            sys.exit(1)
 except Exception as e:
-    print(f"FAILED: {e}")
+    print(f"FAILED: {e}", file=sys.stderr)
+    sys.exit(1)
 EOF
 }
 
@@ -112,7 +114,8 @@ configure_bot() {
   "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 }
 EOF
-    log_info "配置已成功保存至 ${TG_JSON}"
+    chmod 600 "${TG_JSON}"
+    log_info "配置已成功保存至 ${TG_JSON} (权限 600 已加固)"
     echo -e "\n正在向您的 Telegram 发送测试消息..."
     send_test_message
 }

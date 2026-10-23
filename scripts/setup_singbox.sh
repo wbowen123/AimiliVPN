@@ -374,6 +374,26 @@ cat > "$SB_CONFIG_TMP" <<EOF
         "type": "http",
         "path": "/vmess"
       }
+    },
+    {
+      "type": "vmess",
+      "tag": "vmess-ws-in",
+      "listen": "::",
+      "listen_port": 8446,
+      "users": [
+        {
+          "name": "direct-user",
+          "uuid": "${DIRECT_UUID}"
+        },
+        {
+          "name": "residential-user",
+          "uuid": "${RESI_UUID}"
+        }
+      ],
+      "transport": {
+        "type": "ws",
+        "path": "/vmess-ws"
+      }
     }
   ],
   "outbounds": [

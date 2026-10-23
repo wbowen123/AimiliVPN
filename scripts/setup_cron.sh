@@ -139,12 +139,15 @@ run_watchdog() {
     if [[ -n "${cur_ip}" && -n "${old_ip}" && "${cur_ip}" != "${old_ip}" && "${old_ip}" != "您的服务器公网IP" ]]; then
         echo "[${now}] [WATCHDOG] 🔔 检测到 VPS 公网 IP 发生变更: ${old_ip} -> ${cur_ip}，正在自动更新配置与订阅..."
         echo "${cur_ip}" > "${ip_file}"
-        if [[ -x "${INSTALL_DIR}/scripts/generate_subs.py" ]]; then
-            python3 "${INSTALL_DIR}/scripts/generate_subs.py" >/dev/null 2>&1 || true
+        if [[ -f "${INSTALL_DIR}/scripts/generate_subs.py" && -f "${DATA_DIR}/singbox_nodes.json" ]]; then
+            python3 "${INSTALL_DIR}/scripts/generate_subs.py" "${DATA_DIR}/singbox_nodes.json" "/var/www/aimilivpn-sub" >> "${MAINT_LOG}" 2>&1 || true
+            if [[ -d "/var/lib/aimilivpn/subscriptions" ]]; then
+                cp -f /var/www/aimilivpn-sub/* /var/lib/aimilivpn/subscriptions/ 2>/dev/null || true
+            fi
         fi
-        if [[ -x "${INSTALL_DIR}/scripts/tg_bot.sh" ]]; then
-            "${INSTALL_DIR}/scripts/tg_bot.sh" alert "VPS 公网 IP 变动" "检测到服务器 IP 从 ${old_ip} 变更至 ${cur_ip}，已自动更新全部协议订阅配置！" || true
-            "${INSTALL_DIR}/scripts/tg_bot.sh" sub || true
+        if [[ -f "${INSTALL_DIR}/scripts/tg_bot.sh" ]]; then
+            bash "${INSTALL_DIR}/scripts/tg_bot.sh" alert "VPS 公网 IP 变动" "检测到服务器 IP 从 ${old_ip} 变更至 ${cur_ip}，已自动更新全部协议订阅配置！" || true
+            bash "${INSTALL_DIR}/scripts/tg_bot.sh" sub || true
         fi
     fi
 }

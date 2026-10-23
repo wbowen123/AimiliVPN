@@ -157,9 +157,12 @@ find "$ROOT_DIR" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null 
 chmod +x "$ROOT_DIR/scripts/"*.sh "$ROOT_DIR/aimili_cli.py" "$ROOT_DIR/install.sh" 2>/dev/null || true
 
 if command -v python3 >/dev/null 2>&1; then
-    python3 -m py_compile "$ROOT_DIR/aimili_cli.py" "$ROOT_DIR/scripts/generate_subs.py" "$ROOT_DIR/scripts/print_qr.py" 2>/dev/null || true
+    if ! python3 -m py_compile "$ROOT_DIR/aimili_cli.py" "$ROOT_DIR/scripts/generate_subs.py" "$ROOT_DIR/scripts/print_qr.py"; then
+        echo -e "${RED}错误: 新拉取的核心代码编译校验未通过，请检查代码变更！${PLAIN}"
+        exit 1
+    fi
 fi
-echo -e "  -> 语法完整性校验通过！"
+echo -e "  -> 核心代码语法完整性校验通过！"
 
 # 4. 平滑重新生成 Sing-box 配置并校验
 echo -e "${BLUE}[4/5] 平滑刷新 Sing-box 配置与分流规则...${PLAIN}"

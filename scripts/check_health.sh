@@ -142,6 +142,14 @@ END_TS=$(date +%s%N 2>/dev/null || date +%s)
 if [ -n "$RESI_IP_RES" ]; then
     echo -e "  * 住宅网桥连通状态: ${GREEN}100% 畅通可用 [PASS]${PLAIN}"
     echo -e "  * 当前住宅出站 IP:  ${GREEN}${RESI_IP_RES}${PLAIN}"
+    if [ "$START_TS" -gt 0 ] && [ "$END_TS" -ge "$START_TS" ]; then
+        if [ ${#START_TS} -gt 10 ]; then
+            RESI_TIME=$(( (END_TS - START_TS) / 1000000 ))
+        else
+            RESI_TIME=$(( (END_TS - START_TS) * 1000 ))
+        fi
+        echo -e "  * 住宅出口响应延迟: ${GREEN}${RESI_TIME} ms${PLAIN}"
+    fi
     echo -e "  * 住宅节点穿透特征: ${BLUE}所有 [住宅-家宽] 节点访问外部均以此住宅 IP 出站！${PLAIN}"
 else
     echo -e "  * 住宅网桥连通状态: ${RED}连接超时或未就绪 [NOT READY]${PLAIN}"
