@@ -145,6 +145,17 @@ if [ -z "$PUBLIC_IP" ] || [ "$PUBLIC_IP" = "您的服务器公网IP" ]; then
     PUBLIC_IP=$(curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null || curl -4fsS --max-time 5 https://ifconfig.me 2>/dev/null || echo "127.0.0.1")
 fi
 
+PUBLIC_IPV6=""
+if [ -f "$DATA_DIR/public_ipv6.txt" ]; then
+    PUBLIC_IPV6=$(cat "$DATA_DIR/public_ipv6.txt" | tr -d '[:space:]')
+fi
+if [ -z "$PUBLIC_IPV6" ]; then
+    PUBLIC_IPV6=$(curl -6fsS --max-time 5 https://api64.ipify.org 2>/dev/null || curl -6fsS --max-time 5 https://ipv6.icanhazip.com 2>/dev/null || echo "")
+fi
+if [ -n "$PUBLIC_IPV6" ]; then
+    echo "$PUBLIC_IPV6" > "$DATA_DIR/public_ipv6.txt" 2>/dev/null || true
+fi
+
 DOMAIN="${AIMILIVPN_DOMAIN:-}"
 if [ -z "$DOMAIN" ] && [ -f "$DATA_DIR/ui_auth.json" ]; then
     DOMAIN=$(python3 -c "import json; print(json.load(open('$DATA_DIR/ui_auth.json')).get('web_domain',''))" 2>/dev/null || true)
@@ -346,7 +357,6 @@ cat > "$SB_CONFIG_TMP" <<EOF
           "password": "${RESI_UUID}"
         }
       ],
-      "padding_scheme": "random",
       "tls": {
         "enabled": true,
         "certificate_path": "${CERT_FILE}",
@@ -572,6 +582,7 @@ NODES_JSON="$DATA_DIR/singbox_nodes.json"
 cat > "$NODES_JSON" <<EOF
 {
   "public_ip": "${PUBLIC_IP}",
+  "public_ipv6": "${PUBLIC_IPV6}",
   "domain": "${DOMAIN}",
   "camouflage_domain": "${CAMOUFLAGE_DOMAIN}",
   "public_key": "${PUBLIC_KEY}",
@@ -610,7 +621,16 @@ fi
 if [ -n "$NGINX_CONF_DEST" ] && [ -f "$ROOT_DIR/scripts/nginx/aimilivpn-production.conf" ]; then
     install -m 0644 "$ROOT_DIR/scripts/nginx/aimilivpn-production.conf" "$NGINX_CONF_DEST"
     if [ -n "$DOMAIN" ]; then
-        sed -i "s/server_name _;/server_name ${DOMAIN};/g" "$NGINX_CONF_DEST"
+        python3 -c "
+import sys, re
+path = sys.argv[1]
+dom = sys.argv[2]
+with open(path, 'r', encoding='utf-8') as f:
+    c = f.read()
+c = re.sub(r'(listen\s+(?:\[::\]:)?8443\s+ssl;[^{]*?server_name\s+)[^;]+;', r'\g<1>' + dom + ';', c)
+with open(path, 'w', encoding='utf-8') as f:
+    f.write(c)
+" "$NGINX_CONF_DEST" "$DOMAIN" 2>/dev/null || true
     fi
 fi
 
@@ -638,16 +658,33 @@ if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: a
     ufw allow 443/tcp comment aimilivpn >/dev/null 2>&1 || true
     ufw allow 8444/tcp comment aimilivpn >/dev/null 2>&1 || true
     ufw allow 8445/tcp comment aimilivpn >/dev/null 2>&1 || true
+    ufw allow 8446/tcp comment aimilivpn >/dev/null 2>&1 || true
     ufw allow 18443/tcp comment aimilivpn >/dev/null 2>&1 || true
     ufw allow 443/udp comment aimilivpn >/dev/null 2>&1 || true
     ufw allow 8443/udp comment aimilivpn >/dev/null 2>&1 || true
     ufw allow 40000:50000/udp comment aimilivpn >/dev/null 2>&1 || true
 fi
 if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-    firewall-cmd --permanent --add-port={443,8444,8445,18443}/tcp >/dev/null 2>&1 || true
+    firewall-cmd --permanent --add-port={443,8444,8445,8446,18443}/tcp >/dev/null 2>&1 || true
     firewall-cmd --permanent --add-port={443,8443}/udp >/dev/null 2>&1 || true
     firewall-cmd --permanent --add-port=40000-50000/udp >/dev/null 2>&1 || true
     firewall-cmd --reload >/dev/null 2>&1 || true
+fi
+if command -v ip6tables >/dev/null 2>&1; then
+    if ip6tables -t nat -L -n >/dev/null 2>&1; then
+        ip6tables -t nat -C PREROUTING -p udp --dport 40000:50000 -j REDIRECT --to-ports 443 2>/dev/null || \
+        ip6tables -t nat -A PREROUTING -p udp --dport 40000:50000 -j REDIRECT --to-ports 443 2>/dev/null || true
+    fi
+    for p in 443 8444 8445 8446 18443; do
+        ip6tables -C INPUT -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || \
+        ip6tables -I INPUT 1 -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || true
+    done
+    for p in 443 8443; do
+        ip6tables -C INPUT -p udp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || \
+        ip6tables -I INPUT 1 -p udp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || true
+    done
+    ip6tables -C INPUT -p udp --dport 40000:50000 -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || \
+    ip6tables -I INPUT 1 -p udp --dport 40000:50000 -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || true
 fi
 
 # 15. 升级全局管理命令 'ml'

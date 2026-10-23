@@ -14,7 +14,7 @@ BOLD='\033[1m'
 # 8443（管理后台）、80（Let's Encrypt HTTP-01）、443（Reality TCP & Hy2 UDP）、8444（AnyTLS TCP）、8445/8446（VMess TCP）、18443（订阅服务）。
 # UDP 端口：443（Hysteria 2）、8443（TUIC v5）、40000:50000（端口跳跃）。8500/8501 只听 127.0.0.1，不放行。
 AIMILI_FW_PORTS="${AIMILI_FW_PORTS:-8443 80 443 8444 8445 8446 18443}"
-AIMILI_FW_UDP_PORTS="${AIMILI_FW_UDP_PORTS:-443 8443}"
+AIMILI_FW_UDP_PORTS="${AIMILI_FW_UDP_PORTS:-443 8443 40000:50000}"
 AIMILI_FW_ADDED="${AIMILI_FW_ADDED:-/etc/aimilivpn-fw.added}"
 aimili_fw_persist() {
     if command -v netfilter-persistent >/dev/null 2>&1; then
@@ -55,9 +55,10 @@ aimili_fw_open() {
                 && echo "firewalld ${p}/tcp" >> "$AIMILI_FW_ADDED" && opened="$opened firewalld:$p(tcp)"
         done
         for p in $AIMILI_FW_UDP_PORTS; do
-            firewall-cmd --query-port="${p}/udp" >/dev/null 2>&1 && continue
-            firewall-cmd --permanent --add-port="${p}/udp" >/dev/null 2>&1 && firewall-cmd --add-port="${p}/udp" >/dev/null 2>&1 \
-                && echo "firewalld ${p}/udp" >> "$AIMILI_FW_ADDED" && opened="$opened firewalld:$p(udp)"
+            p_fw="${p/:/-}"
+            firewall-cmd --query-port="${p_fw}/udp" >/dev/null 2>&1 && continue
+            firewall-cmd --permanent --add-port="${p_fw}/udp" >/dev/null 2>&1 && firewall-cmd --add-port="${p_fw}/udp" >/dev/null 2>&1 \
+                && echo "firewalld ${p_fw}/udp" >> "$AIMILI_FW_ADDED" && opened="$opened firewalld:$p_fw(udp)"
         done
     fi
     [ -n "$opened" ] && echo -e "${YELLOW:-}  -> 系统防火墙原本拦截入站，已放行 AimiliVPN 端口（${opened# }），已持久化；卸载时会删掉。${PLAIN:-}"

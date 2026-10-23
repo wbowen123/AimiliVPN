@@ -12,7 +12,7 @@ import urllib.parse
 
 def generate_subscriptions(nodes_data, output_dir):
     os.makedirs(output_dir, exist_ok=True)
-    data_dir_path = "/opt/aimilivpn/vpngate_data"
+    data_dir_path = nodes_data.get("data_dir", "/opt/aimilivpn/vpngate_data")
 
     public_ip = nodes_data.get("public_ip", "127.0.0.1")
     
@@ -36,33 +36,35 @@ def generate_subscriptions(nodes_data, output_dir):
     # 规范: direct 走真实 IP (关小黄云跑满千兆), cdn 走 CDN 破墙 (开小黄云破局免流)
     # --------------------------------------------------------------------------
     direct_host = domain if domain else public_ip
-    cdn_host = domain if domain else public_ip
+    cdn_host = ""
     explicit_cdn = nodes_data.get("cdn_domain") or nodes_data.get("cf_cdn_host", "")
     if explicit_cdn:
         cdn_host = explicit_cdn.strip()
-
-    if domain:
+    elif domain:
         clean_d = domain.lower()
         if clean_d.startswith("direct."):
             base_d = clean_d[7:]
             direct_host = clean_d
-            if not cdn_host:
-                cdn_host = f"cdn.{base_d}"
+            cdn_host = f"cdn.{base_d}"
         elif clean_d.startswith("cdn."):
             base_d = clean_d[4:]
             direct_host = f"direct.{base_d}"
-            if not cdn_host:
-                cdn_host = clean_d
+            cdn_host = clean_d
         else:
             cand_direct = f"direct.{clean_d}"
+            cand_cdn = f"cdn.{clean_d}"
             try:
                 import socket
                 socket.gethostbyname(cand_direct)
                 direct_host = cand_direct
             except Exception:
                 direct_host = domain
-            if not cdn_host:
-                cdn_host = f"cdn.{clean_d}"
+            try:
+                import socket
+                socket.gethostbyname(cand_cdn)
+                cdn_host = cand_cdn
+            except Exception:
+                cdn_host = ""
 
     host = direct_host if direct_host else public_ip
     camouflage_sni = nodes_data.get("camouflage_domain", "gateway.icloud.com")
@@ -93,15 +95,16 @@ def generate_subscriptions(nodes_data, output_dir):
             pass
 
     # 读取 Argo 隧道配置
-    argo_file = os.path.join(data_dir_path, "argo_info.json")
-    argo_domain = ""
-    if os.path.exists(argo_file):
-        try:
-            with open(argo_file, "r", encoding="utf-8") as af:
-                argo_data = json.load(af)
-                argo_domain = argo_data.get("domain", "")
-        except Exception:
-            pass
+    argo_domain = nodes_data.get("argo_domain", "")
+    if not argo_domain:
+        argo_file = os.path.join(data_dir_path, "argo_info.json")
+        if os.path.exists(argo_file):
+            try:
+                with open(argo_file, "r", encoding="utf-8") as af:
+                    argo_data = json.load(af)
+                    argo_domain = argo_data.get("domain", "")
+            except Exception:
+                pass
 
     # --------------------------------------------------------------------------
     # 1. 节点名称规范体系 (出站属性 + 协议 + 传输特征 + 网络协议栈)
@@ -294,8 +297,8 @@ def generate_subscriptions(nodes_data, output_dir):
             "tls": True, "servername": argo_domain, "skip-cert-verify": False
         })
 
-    # C2, C3, C4: Cloudflare CDN 小黄云代理节点 (严格使用 cdn_host 或自备主域名，严禁被 argo_domain 污染)
-    cf_cdn_host = cdn_host if cdn_host else domain
+    # C2, C3, C4: Cloudflare CDN 小黄云代理节点 (严格使用 cdn_host，严禁被 argo_domain 或主域名污染)
+    cf_cdn_host = cdn_host
     if cf_cdn_host:
         # C2. VMess-xHTTP CDN (开启小黄云，走 Cloudflare 8443 HTTPS 代理并经 Nginx 转发至 8445)
         vmess_cdn_obj = {
@@ -524,9 +527,21 @@ def generate_subscriptions(nodes_data, output_dir):
         "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
     }
     if hy2_hop_ports:
-        hop_list = [p.strip().replace("-", ":") for p in str(hy2_hop_ports).split(",") if p.strip()]
-        hy2_sb_d["server_ports"] = hop_list
-        hy2_sb_r["server_ports"] = hop_list
+        hop_ranges = []
+        for p in str(hy2_hop_ports).split(","):
+            p = p.strip()
+            if not p:
+                continue
+            if "-" in p or ":" in p:
+                delim = "-" if "-" in p else ":"
+                parts = p.split(delim)
+                if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                    hop_ranges.append(f"{parts[0]}:{parts[1]}")
+            elif p.isdigit():
+                hop_ranges.append(f"{p}:{p}")
+        if hop_ranges:
+            hy2_sb_d["server_ports"] = hop_ranges
+            hy2_sb_r["server_ports"] = hop_ranges
     if hy2_obfs:
         hy2_sb_d["obfs"] = {"type": "salamander", "password": hy2_obfs}
         hy2_sb_r["obfs"] = {"type": "salamander", "password": hy2_obfs}
@@ -535,12 +550,12 @@ def generate_subscriptions(nodes_data, output_dir):
     # TUIC v5
     sb_outbounds_list.append({
         "type": "tuic", "tag": node_names["tuic_direct_v4"], "server": public_ip, "server_port": tuic_port,
-        "uuid": direct_uuid, "password": short_id, "congestion_controller": "bbr",
+        "uuid": direct_uuid, "password": short_id, "congestion_control": "bbr",
         "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": bool(not domain)}
     })
     sb_outbounds_list.append({
         "type": "tuic", "tag": node_names["tuic_resi_v4"], "server": public_ip, "server_port": tuic_port,
-        "uuid": resi_uuid, "password": short_id, "congestion_controller": "bbr",
+        "uuid": resi_uuid, "password": short_id, "congestion_control": "bbr",
         "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": bool(not domain)}
     })
 
@@ -568,6 +583,38 @@ def generate_subscriptions(nodes_data, output_dir):
         "tls": {"enabled": False}
     })
 
+    # IPv6 原生直连节点追加至 Singbox 客户端出站 (保证双栈订阅矩阵 100% 对齐)
+    if public_ipv6:
+        sb_outbounds_list.append({
+            "type": "vless", "tag": node_names["vless_direct_v6"], "server": public_ipv6, "server_port": vless_port,
+            "uuid": direct_uuid, "flow": "xtls-rprx-vision", "network": "tcp",
+            "tls": {
+                "enabled": True, "server_name": camouflage_sni, "reality": {"enabled": True, "public_key": public_key, "short_id": short_id},
+                "utls": {"enabled": True, "fingerprint": "chrome"}
+            }
+        })
+        hy2_sb_v6 = {
+            "type": "hysteria2", "tag": node_names["hy2_direct_v6"], "server": public_ipv6, "server_port": hy2_port,
+            "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+        }
+        if hy2_hop_ports and hop_ranges:
+            hy2_sb_v6["server_ports"] = hop_ranges
+        if hy2_obfs:
+            hy2_sb_v6["obfs"] = {"type": "salamander", "password": hy2_obfs}
+        sb_outbounds_list.append(hy2_sb_v6)
+
+        sb_outbounds_list.append({
+            "type": "tuic", "tag": node_names["tuic_direct_v6"], "server": public_ipv6, "server_port": tuic_port,
+            "uuid": direct_uuid, "password": short_id, "congestion_control": "bbr",
+            "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": bool(not domain)}
+        })
+        sb_outbounds_list.append({
+            "type": "vmess", "tag": node_names["vmess_direct_v6"], "server": public_ipv6, "server_port": vmess_port,
+            "uuid": direct_uuid, "security": "auto",
+            "transport": {"type": "http", "path": "/vmess", "host": [host]},
+            "tls": {"enabled": False}
+        })
+
     # 追加 CDN 节点到 Singbox 客户端配置
     if argo_domain:
         sb_outbounds_list.append({
@@ -589,6 +636,14 @@ def generate_subscriptions(nodes_data, output_dir):
             "transport": {"type": "ws", "path": "/vmess-ws", "headers": {"Host": cf_cdn_host}},
             "tls": {"enabled": True, "server_name": cf_cdn_host}
         })
+        if public_ipv6:
+            cf_ipv6_clean = "2606:4700::6810:a00a"
+            sb_outbounds_list.append({
+                "type": "vmess", "tag": node_names["vmess_cdn_v6"], "server": cf_ipv6_clean, "server_port": 8443,
+                "uuid": direct_uuid, "security": "auto",
+                "transport": {"type": "http", "path": "/vmess", "host": [cf_cdn_host]},
+                "tls": {"enabled": True, "server_name": cf_cdn_host}
+            })
 
     sb_all_tags = [o["tag"] for o in sb_outbounds_list]
     sb_direct_tags = [t for t in sb_all_tags if "直连" in t]
@@ -649,11 +704,12 @@ def generate_subscriptions(nodes_data, output_dir):
         "log": {"level": "warn", "timestamp": True},
         "dns": {
             "servers": [
-                {"tag": "remote-dns", "type": "https", "server": "8.8.8.8", "detour": "🎯 手动选择"},
+                {"tag": "remote-dns", "type": "https", "server": "8.8.8.8", "tls": {"enabled": True, "server_name": "dns.google"}, "detour": "🎯 手动选择"},
                 {"tag": "local-dns", "type": "udp", "server": "223.5.5.5", "detour": "direct"}
             ],
             "rules": [
-                {"clash_mode": "Direct", "server": "local-dns"}
+                {"clash_mode": "Direct", "server": "local-dns"},
+                {"rule_set": "geosite-cn", "server": "local-dns"}
             ],
             "final": "remote-dns",
             "strategy": "prefer_ipv4"
@@ -663,10 +719,29 @@ def generate_subscriptions(nodes_data, output_dir):
         ],
         "outbounds": sb_final_outbounds,
         "route": {
+            "default_domain_resolver": "local-dns",
+            "rule_set": [
+                {
+                    "tag": "geosite-cn",
+                    "type": "remote",
+                    "format": "binary",
+                    "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
+                    "download_detour": "direct"
+                },
+                {
+                    "tag": "geoip-cn",
+                    "type": "remote",
+                    "format": "binary",
+                    "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
+                    "download_detour": "direct"
+                }
+            ],
             "rules": [
                 {"protocol": "dns", "action": "hijack-dns"},
                 {"ip_is_private": True, "outbound": "direct"},
-                {"clash_mode": "Direct", "outbound": "direct"}
+                {"clash_mode": "Direct", "outbound": "direct"},
+                {"rule_set": "geoip-cn", "outbound": "direct"},
+                {"rule_set": "geosite-cn", "outbound": "direct"}
             ],
             "final": "🎯 手动选择",
             "auto_detect_interface": True

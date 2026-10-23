@@ -370,26 +370,28 @@ def check_singbox_binary_validation():
     import tempfile
     import json
 
-    sb_bin = shutil.which("sing-box")
+    sb_bin = shutil.which("sing-box") or shutil.which("sing-box.exe")
     if not sb_bin:
-        for cand in ["/usr/local/bin/sing-box", "/usr/bin/sing-box"]:
-            if os.path.isfile(cand) and os.access(cand, os.X_OK):
+        for cand in [
+            "/usr/local/bin/sing-box",
+            "/usr/bin/sing-box",
+            os.path.expanduser(r"~\.gemini\antigravity-ide\scratch\sing-box.exe")
+        ]:
+            if os.path.isfile(cand):
                 sb_bin = cand
                 break
 
-    if not sb_bin:
-        report_warning(os.path.join(ROOT_DIR, "scripts/code_gate.py"), None, "当前环境未安装 sing-box 二进制程序，跳过内核级真机校验 (CI 与部署环境会自动执行)", "INFO-SB-BIN")
-        return
-
     subs_py = os.path.join(ROOT_DIR, "scripts", "generate_subs.py")
     if os.path.isfile(subs_py):
+        # 场景 1: 纯 IPv4、无 CDN 域名 (严禁误出 CDN 节点)
         with tempfile.TemporaryDirectory() as tmpdir:
-            test_nodes = {
+            test_nodes_v4 = {
                 "public_ip": "1.2.3.4",
+                "data_dir": tmpdir,
                 "direct_uuid": "11111111-1111-1111-1111-111111111111",
                 "resi_uuid": "22222222-2222-2222-2222-222222222222",
-                "public_key": "dummy_pbk",
-                "short_id": "dummy_sid",
+                "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "short_id": "0123456789abcdef",
                 "vless_port": 443,
                 "hy2_port": 443,
                 "tuic_port": 8443,
@@ -398,22 +400,100 @@ def check_singbox_binary_validation():
             }
             nodes_path = os.path.join(tmpdir, "singbox_nodes.json")
             with open(nodes_path, "w", encoding="utf-8") as f:
-                json.dump(test_nodes, f)
+                json.dump(test_nodes_v4, f)
 
             try:
-                subprocess.run(
-                    [sys.executable, subs_py, nodes_path, tmpdir],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    check=True
-                )
+                subprocess.run([sys.executable, subs_py, nodes_path, tmpdir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
                 sb_json = os.path.join(tmpdir, "singbox.json")
                 if os.path.isfile(sb_json):
-                    res = subprocess.run([sb_bin, "check", "-c", sb_json], capture_output=True, text=True)
-                    if res.returncode != 0:
-                        report_error(subs_py, None, f"sing-box 官方内核校验客户端配置失败：{res.stderr.strip()}", "P0-SB-CHECK-CLIENT")
+                    with open(sb_json, "r", encoding="utf-8") as f:
+                        cfg = json.load(f)
+                    cdn_tags = [o.get("tag", "") for o in cfg.get("outbounds", []) if "CDN" in o.get("tag", "")]
+                    if cdn_tags:
+                        report_error(subs_py, None, f"无 CDN 域名配置时违规注入了 CDN 节点: {cdn_tags}", "P1-CDN-INJECTION")
+                    if sb_bin:
+                        res = subprocess.run([sb_bin, "check", "-c", sb_json], capture_output=True, text=True)
+                        if res.returncode != 0:
+                            report_error(subs_py, None, f"sing-box 内核校验客户端配置失败 (IPv4 基础模式)：{res.stderr.strip()}", "P0-SB-CHECK-CLIENT")
             except Exception as e:
-                report_warning(subs_py, None, f"模拟客户端配置生成校验出现异常: {e}", "P2-SB-MOCK")
+                report_warning(subs_py, None, f"模拟纯 IPv4 客户端配置生成出现异常: {e}", "P2-SB-MOCK")
+
+        # 场景 2: 双栈 IPv4 + IPv6 (必须生成对应 IPv6 出站)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_nodes_v6 = {
+                "public_ip": "1.2.3.4",
+                "public_ipv6": "2001:db8::1",
+                "data_dir": tmpdir,
+                "direct_uuid": "11111111-1111-1111-1111-111111111111",
+                "resi_uuid": "22222222-2222-2222-2222-222222222222",
+                "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "short_id": "0123456789abcdef",
+                "vless_port": 443,
+                "hy2_port": 443,
+                "tuic_port": 8443,
+                "anytls_port": 8444,
+                "vmess_port": 8445
+            }
+            nodes_path = os.path.join(tmpdir, "singbox_nodes.json")
+            with open(nodes_path, "w", encoding="utf-8") as f:
+                json.dump(test_nodes_v6, f)
+
+            try:
+                subprocess.run([sys.executable, subs_py, nodes_path, tmpdir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                sb_json = os.path.join(tmpdir, "singbox.json")
+                if os.path.isfile(sb_json):
+                    with open(sb_json, "r", encoding="utf-8") as f:
+                        cfg = json.load(f)
+                    v6_tags = [o.get("tag", "") for o in cfg.get("outbounds", []) if "IPv6" in o.get("tag", "")]
+                    if len(v6_tags) < 4:
+                        report_error(subs_py, None, f"提供 public_ipv6 后 singbox.json 漏生成 IPv6 原生出站 (仅有 {len(v6_tags)} 个)", "P1-IPV6-MISMATCH")
+                    if sb_bin:
+                        res = subprocess.run([sb_bin, "check", "-c", sb_json], capture_output=True, text=True)
+                        if res.returncode != 0:
+                            report_error(subs_py, None, f"sing-box 内核校验客户端配置失败 (双栈 IPv6 模式)：{res.stderr.strip()}", "P0-SB-CHECK-CLIENT")
+            except Exception as e:
+                report_warning(subs_py, None, f"模拟双栈客户端配置生成出现异常: {e}", "P2-SB-MOCK")
+
+        # 场景 3: direct.example.com 双域名推导 (CDN SNI 必须推导为 cdn.example.com)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_nodes_domain = {
+                "public_ip": "1.2.3.4",
+                "domain": "direct.example.com",
+                "data_dir": tmpdir,
+                "direct_uuid": "11111111-1111-1111-1111-111111111111",
+                "resi_uuid": "22222222-2222-2222-2222-222222222222",
+                "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "short_id": "0123456789abcdef",
+                "vless_port": 443,
+                "hy2_port": 443,
+                "tuic_port": 8443,
+                "anytls_port": 8444,
+                "vmess_port": 8445
+            }
+            nodes_path = os.path.join(tmpdir, "singbox_nodes.json")
+            with open(nodes_path, "w", encoding="utf-8") as f:
+                json.dump(test_nodes_domain, f)
+
+            try:
+                subprocess.run([sys.executable, subs_py, nodes_path, tmpdir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                sb_json = os.path.join(tmpdir, "singbox.json")
+                if os.path.isfile(sb_json):
+                    with open(sb_json, "r", encoding="utf-8") as f:
+                        cfg = json.load(f)
+                    cdn_obs = [o for o in cfg.get("outbounds", []) if "CDN" in o.get("tag", "") and o.get("type") == "vmess"]
+                    for o in cdn_obs:
+                        sni = o.get("tls", {}).get("server_name")
+                        if sni != "cdn.example.com":
+                            report_error(subs_py, None, f"direct. 域名的 CDN 节点 SNI 未正确推导为 cdn. 域 (得到: {sni})", "P1-CDN-DERIVATION")
+                    if sb_bin:
+                        res = subprocess.run([sb_bin, "check", "-c", sb_json], capture_output=True, text=True)
+                        if res.returncode != 0:
+                            report_error(subs_py, None, f"sing-box 内核校验客户端配置失败 (双域名模式)：{res.stderr.strip()}", "P0-SB-CHECK-CLIENT")
+            except Exception as e:
+                report_warning(subs_py, None, f"模拟双域名客户端配置生成出现异常: {e}", "P2-SB-MOCK")
+
+    if not sb_bin:
+        report_warning(os.path.join(ROOT_DIR, "scripts/code_gate.py"), None, "当前环境未安装 sing-box 二进制程序，跳过内核级真机校验 (CI 与部署环境会自动执行)", "INFO-SB-BIN")
 
 
 # ==============================================================================

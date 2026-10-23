@@ -83,10 +83,15 @@ try:
     priv_key = base64.b64encode(priv_bytes).decode('utf-8')
     pub_key = base64.b64encode(pub_bytes).decode('utf-8')
 except Exception:
-    import secrets
-    priv_bytes = secrets.token_bytes(32)
-    priv_key = base64.b64encode(priv_bytes).decode('utf-8')
-    pub_key = priv_key
+    try:
+        from cryptography.hazmat.primitives.asymmetric import x25519
+        priv = x25519.X25519PrivateKey.generate()
+        pub = priv.public_key()
+        priv_key = base64.b64encode(priv.private_bytes_raw()).decode('utf-8')
+        pub_key = base64.b64encode(pub.public_bytes_raw()).decode('utf-8')
+    except Exception as err:
+        sys.stderr.write(f"生成 x25519 密钥对失败: {err}\n")
+        sys.exit(1)
 
 # 2. 调用 Cloudflare 注册 API
 url = "https://api.cloudflareclient.com/v0a3370/reg"
@@ -116,11 +121,23 @@ try:
         peer_pub = peer.get("public_key", "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=")
         peer_endpoint = peer.get("endpoint", {}).get("host", "162.159.192.1:2408")
 
+        client_id_b64 = cfg.get("client_id", "")
+        reserved = [0, 0, 0]
+        if client_id_b64:
+            try:
+                raw_cid = base64.b64decode(client_id_b64)
+                if len(raw_cid) == 3:
+                    reserved = list(raw_cid)
+            except Exception:
+                pass
+
         data = {
             "private_key": priv_key,
             "public_key": pub_key,
             "v4": v4,
             "v6": v6,
+            "reserved": reserved,
+            "client_id": client_id_b64,
             "peer_pub": peer_pub,
             "peer_endpoint": peer_endpoint,
             "id": res.get("id", ""),
@@ -136,6 +153,7 @@ except Exception as e:
         "public_key": pub_key,
         "v4": "172.16.0.2/32",
         "v6": "2606:4700:110:8888::/128",
+        "reserved": [0, 0, 0],
         "peer_pub": "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
         "peer_endpoint": "162.159.192.1:2408",
         "fallback": True
@@ -207,7 +225,7 @@ if mode != "off" and os.path.exists(warp_file):
                 "port": server_port,
                 "public_key": warp.get("peer_pub", "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo="),
                 "allowed_ips": ["0.0.0.0/0", "::/0"],
-                "reserved": [0, 0, 0]
+                "reserved": warp.get("reserved", [0, 0, 0])
             }
         ],
         "mtu": 1420
@@ -223,6 +241,21 @@ rules = route.get("rules", [])
 # 清理已有的 warp-out 规则
 rules = [r for r in rules if r.get("outbound") != "warp-out"]
 
+# 嗅探与 DNS 规则优先置顶 (确保域名嗅探先于 WARP 域名匹配执行)
+sniff_rule = None
+dns_rules = []
+for r in rules:
+    if r.get("action") == "sniff":
+        sniff_rule = r
+    elif r.get("protocol") == "dns" or r.get("action") == "hijack-dns":
+        dns_rules.append(r)
+
+if not sniff_rule:
+    sniff_rule = {
+        "action": "sniff",
+        "sniffer": ["tls", "http", "quic", "dns"]
+    }
+
 # 提取核心固定规则
 priv_rule = {"ip_is_private": True, "outbound": "direct-out"}
 resi_rule = {"auth_user": ["residential-user"], "outbound": "resi-out"}
@@ -231,6 +264,10 @@ direct_rule = {"auth_user": ["direct-user"], "outbound": "direct-out"}
 # 清理既有规则中的相同条目以重新标准排序
 cleaned_rules = []
 for r in rules:
+    if r.get("action") == "sniff":
+        continue
+    if r.get("protocol") == "dns" or r.get("action") == "hijack-dns":
+        continue
     if r.get("ip_is_private") is True:
         continue
     if "residential-user" in r.get("auth_user", []):
@@ -284,7 +321,7 @@ elif mode == "global":
         "outbound": "warp-out"
     }
 
-final_rules = [priv_rule, resi_rule]
+final_rules = [sniff_rule] + dns_rules + [priv_rule, resi_rule]
 if warp_rule:
     final_rules.append(warp_rule)
 final_rules.extend(cleaned_rules)
@@ -299,8 +336,17 @@ with open(cfg_file, "w", encoding="utf-8") as f:
 print("CONFIG_UPDATED")
 EOF
 
+    SB_BIN=""
     if command -v sing-box >/dev/null 2>&1; then
-        if sing-box check -c "${SINGBOX_CONFIG}" >/dev/null 2>&1; then
+        SB_BIN="sing-box"
+    elif [[ -x "/usr/local/bin/sing-box" ]]; then
+        SB_BIN="/usr/local/bin/sing-box"
+    elif [[ -x "/usr/bin/sing-box" ]]; then
+        SB_BIN="/usr/bin/sing-box"
+    fi
+
+    if [[ -n "$SB_BIN" ]]; then
+        if "$SB_BIN" check -c "${SINGBOX_CONFIG}" >/dev/null 2>&1; then
             rm -f "${SINGBOX_CONFIG}.bak"
             systemctl restart sing-box.service || true
             cat > "${DATA_DIR}/warp_mode.json" <<MODE_EOF
@@ -319,7 +365,7 @@ MODE_EOF
             return 1
         fi
     else
-        rm -f "${SINGBOX_CONFIG}.bak"
+        log_warn "未探测到 sing-box 二进制，已更新配置文件但保留备份 ${SINGBOX_CONFIG}.bak"
     fi
 }
 
