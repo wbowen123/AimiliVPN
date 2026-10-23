@@ -152,7 +152,14 @@ EOF
 start_token_tunnel() {
     install_cloudflared || return 1
     local token="$1"
+    local domain="$2"
+    local local_port="$3"
+
     if [[ -z "${token}" ]]; then
+        echo ""
+        echo -e "${C_BOLD}${C_YELLOW}┌────────────────────────────────────────────────────────────────────────┐${C_RESET}"
+        echo -e "${C_BOLD}${C_YELLOW}│  Cloudflare Zero Trust 固定隧道 (Named Tunnel) 关键配置向导            │${C_RESET}"
+        echo -e "${C_BOLD}${C_YELLOW}└────────────────────────────────────────────────────────────────────────┘${C_RESET}"
         echo -ne "${C_BOLD}请输入 Cloudflare Zero Trust 隧道 Token: ${C_RESET}"
         read -r token
     fi
@@ -162,7 +169,40 @@ start_token_tunnel() {
         return 1
     fi
 
-    log_info "正在配置 Cloudflare 固定 Token 隧道 (Named Tunnel)..."
+    if [[ -z "${domain}" ]]; then
+        echo ""
+        echo -e "${C_CYAN}请输入您在 Cloudflare Zero Trust 控制台为该隧道绑定的公网域名：${C_RESET}"
+        echo -e "例如: ${C_GREEN}argo.yourdomain.com${C_RESET}"
+        echo -ne "公网域名: "
+        read -r domain
+    fi
+
+    if [[ -z "${local_port}" ]]; then
+        echo ""
+        echo -e "${C_YELLOW}【关键回源端口提示】${C_RESET}"
+        echo -e "AimiliVPN 的 Sing-box VMess 服务默认监听在本地 ${C_GREEN}8445${C_RESET} 端口 (HTTP)。"
+        echo -e "${C_RED}⚠️ 注意：Cloudflare 控制台新建主机名时，默认可能会填入 8001 或 80 等占位符。${C_RESET}"
+        echo -e "${C_RED}切勿使用 8001！必须将 Cloudflare 控制台的 URL 修改为与此处完全一致的端口！${C_RESET}"
+        echo -ne "请输入本地回源端口 [默认推荐 8445]: "
+        read -r local_port
+        local_port="${local_port:-8445}"
+    fi
+
+    echo ""
+    echo -e "${C_GREEN}======================================================================${C_RESET}"
+    echo -e "${C_BOLD}${C_GREEN}  📌 Cloudflare Zero Trust 控制台回源核对清单 (务必核实):${C_RESET}"
+    echo -e "  ① 登录 Cloudflare Zero Trust -> Networks -> Tunnels -> 点击你的隧道"
+    echo -e "  ② 进入 ${C_YELLOW}Public Hostnames${C_RESET} 标签页 -> 点击 Add a public hostname"
+    echo -e "  ③ 严格按照以下参数填写:"
+    echo -e "     - Subdomain / Domain:  ${C_BOLD}${C_CYAN}${domain:-未填写}${C_RESET}"
+    echo -e "     - Path:                ${C_CYAN}/vmess${C_RESET} (或留空)"
+    echo -e "     - Service Type:        ${C_BOLD}${C_YELLOW}HTTP${C_RESET}  ${C_RED}(千万不要选 HTTPS)${C_RESET}"
+    echo -e "     - URL:                 ${C_BOLD}${C_GREEN}127.0.0.1:${local_port}${C_RESET} (或 localhost:${local_port})"
+    echo -e "  ⚠️ 若 Cloudflare 界面默认显示 8001，请务必覆盖为: ${C_BOLD}${C_GREEN}127.0.0.1:${local_port}${C_RESET}"
+    echo -e "${C_GREEN}======================================================================${C_RESET}"
+    echo ""
+
+    log_info "正在配置 Cloudflare 固定 Token 隧道服务 (Named Tunnel)..."
     systemctl stop cloudflared-argo.service >/dev/null 2>&1 || true
 
     cat > "${SERVICE_FILE}" <<EOF
@@ -192,12 +232,26 @@ EOF
     cat > "${ARGO_JSON}" <<EOF
 {
   "type": "token",
+  "domain": "${domain}",
+  "local_port": ${local_port},
   "token_masked": "${token:0:8}***${token: -6}",
   "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 }
 EOF
 
     log_info "固定 Token 隧道已常驻启动！"
+
+    # 自动刷新订阅，注入包含公网域名的 Argo 节点
+    if [[ -n "${domain}" ]]; then
+        log_info "正在自动更新客户端聚合订阅，注入 Argo 穿透节点..."
+        if [[ -f "/usr/local/bin/aimilivpn-generate-subs" ]]; then
+            /usr/local/bin/aimilivpn-generate-subs >/dev/null 2>&1 || true
+        elif [[ -f "${SCRIPT_DIR}/generate_subs.py" ]]; then
+            python3 "${SCRIPT_DIR}/generate_subs.py" "${DATA_DIR}/singbox_nodes.json" /var/www/aimilivpn-sub >/dev/null 2>&1 || true
+        fi
+        log_info "订阅已更新完成，包含 Argo Anycast 优选节点！"
+    fi
+
     show_status
 }
 
@@ -272,8 +326,14 @@ show_token_guide() {
     echo -e "          下方会展示命令: cloudflared service install ${C_BOLD}${C_YELLOW}eyJhIjoiYTY4...${C_RESET}"
     echo -e "          ${C_BOLD}${C_GREEN}其中那一长串以 eyJh 开头的长文本即为您的专属 Token！${C_RESET}"
     echo ""
-    echo -e "  并在该隧道的 Public Hostname 标签页中，将您的子域名（如 argo.domain.com）"
-    echo -e "  绑定内部服务: Service Type = ${C_BLUE}HTTP${C_RESET}, URL = ${C_YELLOW}localhost:8445${C_RESET}"
+    echo -e "  ${C_BOLD}${C_YELLOW}【关键防坑！Public Hostname 回源配置】${C_RESET}"
+    echo -e "  在隧道设置页面的 ${C_YELLOW}Public Hostnames${C_RESET} 标签页中添加主机名:"
+    echo -e "    * Subdomain / Domain: 您的专属子域名 (如: ${C_CYAN}argo.yourdomain.com${C_RESET})"
+    echo -e "    * Path:               留空 或输入 ${C_CYAN}/vmess${C_RESET}"
+    echo -e "    * Service Type:       必须选择 ${C_BOLD}${C_YELLOW}HTTP${C_RESET} (切勿选 HTTPS)"
+    echo -e "    * URL:                必须填写 ${C_BOLD}${C_GREEN}127.0.0.1:8445${C_RESET} (或 localhost:8445)"
+    echo -e "  ${C_RED}⚠️ 警告：Cloudflare 界面默认占位符常常是 8001 或 80，切勿使用默认的 8001！${C_RESET}"
+    echo -e "  ${C_RED}AimiliVPN 服务监听在 8445，如果留着 8001，隧道请求将必定报 502 错误！${C_RESET}"
     echo -e "${C_GREEN}======================================================================${C_RESET}"
 }
 
@@ -303,8 +363,7 @@ menu() {
                 read -rp "按回车键继续..." _
                 ;;
             2)
-                read -rp "请输入 Cloudflare Zero Trust 隧道 Token: " tok
-                start_token_tunnel "${tok}"
+                start_token_tunnel
                 read -rp "按回车键继续..." _
                 ;;
             3)
@@ -347,7 +406,7 @@ case "${1:-}" in
         ;;
     token)
         check_root
-        start_token_tunnel "${2:-}"
+        start_token_tunnel "${2:-}" "${3:-}" "${4:-8445}"
         ;;
     status|info)
         show_status
@@ -369,7 +428,7 @@ case "${1:-}" in
         menu
         ;;
     *)
-        echo "用法: $0 {quick [port]|token <token>|status|restart|stop|uninstall|menu}"
+        echo "用法: $0 {quick [port]|token <token> [domain] [port]|status|restart|stop|uninstall|menu}"
         exit 1
         ;;
 esac
