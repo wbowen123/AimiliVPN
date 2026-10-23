@@ -384,6 +384,24 @@ def check_singbox_binary_validation():
 
     subs_py = os.path.join(ROOT_DIR, "scripts", "generate_subs.py")
     if os.path.isfile(subs_py):
+        def _run_smoke_test(cfg_path, scenario):
+            if not sb_bin:
+                return
+            try:
+                proc = subprocess.Popen([sb_bin, "run", "-c", cfg_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=os.path.dirname(cfg_path))
+                try:
+                    _, err = proc.communicate(timeout=2)
+                    err_clean = err.strip() or f"进程异常退出，退出码: {proc.returncode}"
+                    report_error(subs_py, None, f"sing-box run 进程启动冒烟失败 ({scenario})，check 虽通过但运行时崩溃: {err_clean}", "P0-SB-RUN-FATAL")
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    try:
+                        proc.wait(timeout=1)
+                    except Exception:
+                        pass
+            except Exception as e:
+                report_error(subs_py, None, f"sing-box run 冒烟测试执行异常 ({scenario}): {e}", "P0-SB-RUN-EXCEPTION")
+
         # 场景 1: 纯 IPv4、无 CDN 域名 (严禁误出 CDN 节点)
         with tempfile.TemporaryDirectory() as tmpdir:
             test_nodes_v4 = {
@@ -416,6 +434,8 @@ def check_singbox_binary_validation():
                         res = subprocess.run([sb_bin, "check", "-c", sb_json], capture_output=True, text=True)
                         if res.returncode != 0:
                             report_error(subs_py, None, f"sing-box 内核校验客户端配置失败 (IPv4 基础模式)：{res.stderr.strip()}", "P0-SB-CHECK-CLIENT")
+                        else:
+                            _run_smoke_test(sb_json, "IPv4 基础模式")
             except Exception as e:
                 report_warning(subs_py, None, f"模拟纯 IPv4 客户端配置生成出现异常: {e}", "P2-SB-MOCK")
 
@@ -452,14 +472,17 @@ def check_singbox_binary_validation():
                         res = subprocess.run([sb_bin, "check", "-c", sb_json], capture_output=True, text=True)
                         if res.returncode != 0:
                             report_error(subs_py, None, f"sing-box 内核校验客户端配置失败 (双栈 IPv6 模式)：{res.stderr.strip()}", "P0-SB-CHECK-CLIENT")
+                        else:
+                            _run_smoke_test(sb_json, "双栈 IPv6 模式")
             except Exception as e:
                 report_warning(subs_py, None, f"模拟双栈客户端配置生成出现异常: {e}", "P2-SB-MOCK")
 
-        # 场景 3: direct.example.com 双域名推导 (CDN SNI 必须推导为 cdn.example.com)
+        # 场景 3: 域名模式校验 (无 DNS 时不得误出 CDN 节点，显式指定 cdn_domain 时必须生成且 SNI 正确)
         with tempfile.TemporaryDirectory() as tmpdir:
             test_nodes_domain = {
                 "public_ip": "1.2.3.4",
                 "domain": "direct.example.com",
+                "cdn_domain": "cdn.example.com",
                 "data_dir": tmpdir,
                 "direct_uuid": "11111111-1111-1111-1111-111111111111",
                 "resi_uuid": "22222222-2222-2222-2222-222222222222",
@@ -490,6 +513,8 @@ def check_singbox_binary_validation():
                         res = subprocess.run([sb_bin, "check", "-c", sb_json], capture_output=True, text=True)
                         if res.returncode != 0:
                             report_error(subs_py, None, f"sing-box 内核校验客户端配置失败 (双域名模式)：{res.stderr.strip()}", "P0-SB-CHECK-CLIENT")
+                        else:
+                            _run_smoke_test(sb_json, "双域名模式")
             except Exception as e:
                 report_warning(subs_py, None, f"模拟双域名客户端配置生成出现异常: {e}", "P2-SB-MOCK")
 

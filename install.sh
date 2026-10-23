@@ -842,7 +842,7 @@ fi
 if ! command -v acme.sh >/dev/null 2>&1; then
     echo -e "${YELLOW}  -> 安装 HTTPS 证书辅助工具 acme.sh ...${PLAIN}"
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL https://get.acme.sh | sh -s email=admin@ilovestudycn.com || echo -e "${YELLOW}  -> acme.sh 在线安装失败；不会阻断主程序安装。${PLAIN}"
+        curl -fsSL https://get.acme.sh | sh -s email=admin@aimilivpn.local || echo -e "${YELLOW}  -> acme.sh 在线安装失败；不会阻断主程序安装。${PLAIN}"
         [ -f "$HOME/.acme.sh/acme.sh" ] && ln -sf "$HOME/.acme.sh/acme.sh" /usr/local/bin/acme.sh || true
     fi
 fi

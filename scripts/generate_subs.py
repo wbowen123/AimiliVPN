@@ -45,10 +45,23 @@ def generate_subscriptions(nodes_data, output_dir):
         if clean_d.startswith("direct."):
             base_d = clean_d[7:]
             direct_host = clean_d
-            cdn_host = f"cdn.{base_d}"
+            cand_cdn = f"cdn.{base_d}"
+            try:
+                import socket
+                socket.gethostbyname(cand_cdn)
+                cdn_host = cand_cdn
+            except Exception:
+                cdn_host = ""
+                print(f"  [!] 提示: 检测到 direct. 域名 {clean_d}，但 {cand_cdn} 尚未配置 DNS 解析，跳过 CDN 节点生成。")
         elif clean_d.startswith("cdn."):
             base_d = clean_d[4:]
-            direct_host = f"direct.{base_d}"
+            cand_direct = f"direct.{base_d}"
+            try:
+                import socket
+                socket.gethostbyname(cand_direct)
+                direct_host = cand_direct
+            except Exception:
+                direct_host = clean_d
             cdn_host = clean_d
         else:
             cand_direct = f"direct.{clean_d}"
@@ -95,6 +108,18 @@ def generate_subscriptions(nodes_data, output_dir):
         except Exception:
             pass
 
+    # 读取 Cloudflare 优选 IPv6 (作用于 IPv6 CDN 节点)
+    cf_ipv6_clean = "2606:4700::6810:a00a"
+    clean_v6_file = os.path.join(data_dir_path, "cf_clean_ipv6.txt")
+    if os.path.exists(clean_v6_file):
+        try:
+            with open(clean_v6_file, "r", encoding="utf-8") as cv6f:
+                cv6 = cv6f.read().strip()
+                if ":" in cv6:
+                    cf_ipv6_clean = cv6
+        except Exception:
+            pass
+
     # 读取 Argo 隧道配置
     argo_domain = nodes_data.get("argo_domain", "")
     if not argo_domain:
@@ -128,7 +153,7 @@ def generate_subscriptions(nodes_data, output_dir):
         "tuic_direct_v6":  "⚡ [直连-极速·IPv6] TUIC v5【H3-QUIC-0RTT·IPv6秒开】",
         "vmess_direct_v6": "☁️ [直连-极速·IPv6] VMess-xHTTP【H2/H3-分块·原生IPv6】",
         # Cloudflare CDN / Argo 穿透节点 (明确标注优选 IP 赋能)
-        "vmess_argo_v4":   "⛅ [CDN-优选IP·IPv4] VMess-WS-Argo【Anycast优选·Cloudflare全球破墙】",
+        "vmess_argo_v4":   "⛅ [CDN-优选IP·IPv4] VMess-xHTTP-Argo【Anycast优选·Cloudflare全球破墙】",
         "vmess_cdn_v4":    "⛅ [CDN-小黄云·IPv4] VMess-xHTTP【Cloudflare-CDN·分块免流破墙】",
         "vless_cdn_v4":    "⛅ [CDN-小黄云·IPv4] VMess-WS-TLS【Cloudflare-CDN·小黄云破墙】",
         "vmess_cdn_v6":    "⛅ [CDN-小黄云·IPv6] VMess-xHTTP【Cloudflare-CDN-IPv6·分块穿透】"
@@ -332,7 +357,6 @@ def generate_subscriptions(nodes_data, output_dir):
 
         # C4. IPv6 CDN 节点 (Cloudflare Anycast IPv6 优选)
         if public_ipv6:
-            cf_ipv6_clean = "2606:4700::6810:a00a"
             vmess_cdn_v6_obj = {
                 "v": "2", "ps": node_names["vmess_cdn_v6"], "add": cf_ipv6_clean, "port": 8443,
                 "id": direct_uuid, "aid": 0, "net": "http", "type": "none",
@@ -648,7 +672,6 @@ def generate_subscriptions(nodes_data, output_dir):
             "tls": {"enabled": True, "server_name": cf_cdn_host}
         })
         if public_ipv6:
-            cf_ipv6_clean = "2606:4700::6810:a00a"
             sb_outbounds_list.append({
                 "type": "vmess", "tag": node_names["vmess_cdn_v6"], "server": cf_ipv6_clean, "server_port": 8443,
                 "uuid": direct_uuid, "security": "auto",
@@ -711,16 +734,27 @@ def generate_subscriptions(nodes_data, output_dir):
 
     sb_final_outbounds = singbox_selectors + sb_outbounds_list + [{"type": "direct", "tag": "direct"}]
 
+    sb_cn_domain_suffixes = [
+        ".cn", ".163.com", ".baidu.com", ".qq.com", ".bilibili.com",
+        ".jd.com", ".taobao.com", ".alipay.com", ".zhihu.com",
+        ".weibo.com", ".sohu.com", ".sina.com.cn"
+    ]
+
     sb_client_config = {
         "log": {"level": "warn", "timestamp": True},
+        "experimental": {
+            "cache_file": {
+                "enabled": True
+            }
+        },
         "dns": {
             "servers": [
                 {"tag": "remote-dns", "type": "https", "server": "8.8.8.8", "tls": {"enabled": True, "server_name": "dns.google"}, "detour": "🎯 手动选择"},
-                {"tag": "local-dns", "type": "udp", "server": "223.5.5.5", "detour": "direct"}
+                {"tag": "local-dns", "type": "udp", "server": "223.5.5.5"}
             ],
             "rules": [
                 {"clash_mode": "Direct", "server": "local-dns"},
-                {"rule_set": "geosite-cn", "server": "local-dns"}
+                {"domain_suffix": sb_cn_domain_suffixes, "server": "local-dns"}
             ],
             "final": "remote-dns",
             "strategy": "prefer_ipv4"
@@ -731,28 +765,12 @@ def generate_subscriptions(nodes_data, output_dir):
         "outbounds": sb_final_outbounds,
         "route": {
             "default_domain_resolver": "local-dns",
-            "rule_set": [
-                {
-                    "tag": "geosite-cn",
-                    "type": "remote",
-                    "format": "binary",
-                    "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
-                    "download_detour": "direct"
-                },
-                {
-                    "tag": "geoip-cn",
-                    "type": "remote",
-                    "format": "binary",
-                    "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
-                    "download_detour": "direct"
-                }
-            ],
             "rules": [
                 {"protocol": "dns", "action": "hijack-dns"},
                 {"ip_is_private": True, "outbound": "direct"},
                 {"clash_mode": "Direct", "outbound": "direct"},
-                {"rule_set": "geoip-cn", "outbound": "direct"},
-                {"rule_set": "geosite-cn", "outbound": "direct"}
+                {"clash_mode": "Global", "outbound": "🎯 手动选择"},
+                {"domain_suffix": sb_cn_domain_suffixes, "outbound": "direct"}
             ],
             "final": "🎯 手动选择",
             "auto_detect_interface": True

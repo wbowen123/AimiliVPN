@@ -11,7 +11,11 @@ import subprocess
 import shutil
 import urllib.parse
 
-INSTALL_DIR = "/opt/aimilivpn"
+INSTALL_DIR = os.environ.get("AIMILIVPN_DIR", "/opt/aimilivpn")
+if not os.path.exists(INSTALL_DIR):
+    local_dir = os.path.abspath(os.path.dirname(__file__))
+    if os.path.exists(os.path.join(local_dir, "vpngate_data")):
+        INSTALL_DIR = local_dir
 DATA_DIR = os.path.join(INSTALL_DIR, "vpngate_data")
 KEY_FILE = os.path.join(DATA_DIR, "singbox_keys.json")
 NODES_JSON = os.path.join(DATA_DIR, "singbox_nodes.json")

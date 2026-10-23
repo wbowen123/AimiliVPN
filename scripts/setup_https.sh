@@ -94,10 +94,6 @@ if [ "${AIMILIVPN_IP_CERT_FOREVER:-0}" = "1" ]; then
   CERT_DAYS=36500
   ENABLE_IP_ACME=0
 fi
-if ! openssl req -x509 -nodes -newkey rsa:2048 -days "$CERT_DAYS" -keyout "$KEY_FILE" -out "$CERT_FILE" -subj "/CN=$PUBLIC_IP" -addext "subjectAltName=IP:$PUBLIC_IP" >/dev/null 2>&1; then
-  openssl req -x509 -nodes -newkey rsa:2048 -days 3650 -keyout "$KEY_FILE" -out "$CERT_FILE" -subj "/CN=$PUBLIC_IP" -addext "subjectAltName=IP:$PUBLIC_IP" >/dev/null 2>&1
-fi
-chmod 600 "$KEY_FILE"; chmod 644 "$CERT_FILE"
 
 cert_is_signed() {
   local file="$1" subject issuer
@@ -114,9 +110,22 @@ cert_matches_name() {
   [ -z "$name" ] && return 0
   openssl x509 -in "$file" -noout -subject -ext subjectAltName 2>/dev/null | grep -Fqi "$name"
 }
+cert_san_name() {
+  local dns ip
+  dns=$(openssl x509 -in "$1" -noout -ext subjectAltName 2>/dev/null | sed -n 's/.*DNS:\([^, ]*\).*/\1/p' | head -n 1)
+  if [ -n "$dns" ]; then
+    printf '%s\n' "$dns"
+    return 0
+  fi
+  ip=$(openssl x509 -in "$1" -noout -ext subjectAltName 2>/dev/null | sed -n 's/.*IP Address:\([^, ]*\).*/\1/p' | head -n 1)
+  if [ -n "$ip" ]; then
+    printf '%s\n' "$ip"
+    return 0
+  fi
+  return 1
+}
 cert_dns_name() {
-  openssl x509 -in "$1" -noout -ext subjectAltName 2>/dev/null \
-    | sed -n 's/.*DNS:\([^, ]*\).*/\1/p' | head -n 1
+  cert_san_name "$1"
 }
 key_for_cert() {
   local cert="$1" dir base stem candidate
@@ -131,6 +140,15 @@ key_for_cert() {
   done
   return 1
 }
+
+# 仅在证书不存在或不是合法 CA 签发证书时，生成自签兜底证书，严防重跑覆盖已有的正式证书
+if [ ! -s "$CERT_FILE" ] || [ ! -s "$KEY_FILE" ] || ! cert_is_signed "$CERT_FILE"; then
+  if ! openssl req -x509 -nodes -newkey rsa:2048 -days "$CERT_DAYS" -keyout "$KEY_FILE" -out "$CERT_FILE" -subj "/CN=$PUBLIC_IP" -addext "subjectAltName=IP:$PUBLIC_IP" >/dev/null 2>&1; then
+    openssl req -x509 -nodes -newkey rsa:2048 -days 3650 -keyout "$KEY_FILE" -out "$CERT_FILE" -subj "/CN=$PUBLIC_IP" -addext "subjectAltName=IP:$PUBLIC_IP" >/dev/null 2>&1
+  fi
+  chmod 600 "$KEY_FILE"; chmod 644 "$CERT_FILE"
+fi
+
 ADOPTED_CERT=""
 ADOPTED_DOMAIN=""
 consider_cert() {
@@ -140,12 +158,12 @@ consider_cert() {
   cert_matches_name "$cert" "${AIMILIVPN_DOMAIN:-}" || return 0
   key=$(key_for_cert "$cert") || return 0
   if [ -z "${AIMILIVPN_DOMAIN:-}" ]; then
-    cert_dns_name "$cert" >/dev/null || return 0
-    [ -n "$(cert_dns_name "$cert")" ] || return 0
+    cert_san_name "$cert" >/dev/null || return 0
+    [ -n "$(cert_san_name "$cert")" ] || return 0
   fi
   ADOPTED_CERT="$cert"
   ADOPTED_KEY="$key"
-  ADOPTED_DOMAIN="${AIMILIVPN_DOMAIN:-$(cert_dns_name "$cert")}"
+  ADOPTED_DOMAIN="${AIMILIVPN_DOMAIN:-$(cert_san_name "$cert")}"
 }
 if [ -n "${AIMILIVPN_DOMAIN:-}" ] && [ -s "/etc/letsencrypt/live/${AIMILIVPN_DOMAIN}/fullchain.pem" ]; then
   consider_cert "/etc/letsencrypt/live/${AIMILIVPN_DOMAIN}/fullchain.pem"

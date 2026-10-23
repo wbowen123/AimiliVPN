@@ -69,6 +69,7 @@ import urllib.request
 import json
 import base64
 import os
+import sys
 import subprocess
 
 data_dir = "/opt/aimilivpn/vpngate_data"
@@ -375,7 +376,12 @@ MODE_EOF
             return 1
         fi
     else
-        log_warn "未探测到 sing-box 二进制，已更新配置文件但保留备份 ${WARP_CONFIG_BAK}"
+        log_err "未探测到 sing-box 二进制，无法安全验证与应用 WARP 配置！正在安全回滚..."
+        if [[ -f "${WARP_CONFIG_BAK}" ]]; then
+            cp -f "${WARP_CONFIG_BAK}" "${SINGBOX_CONFIG}"
+            rm -f "${WARP_CONFIG_BAK}"
+        fi
+        return 1
     fi
 }
 
