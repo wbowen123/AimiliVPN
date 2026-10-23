@@ -9,10 +9,11 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;36m'
+BOLD='\033[1m'
 # 系统防火墙（甲骨文镜像自带 iptables INPUT REJECT、ufw、firewalld）放行 AimiliVPN 自己的对外端口：
-# 8443（管理后台）、80（Let's Encrypt HTTP-01）、443（Reality TCP & Hy2 UDP）、8444（AnyTLS TCP）、8445（VMess TCP）、18443（订阅服务）。
+# 8443（管理后台）、80（Let's Encrypt HTTP-01）、443（Reality TCP & Hy2 UDP）、8444（AnyTLS TCP）、8445/8446（VMess TCP）、18443（订阅服务）。
 # UDP 端口：443（Hysteria 2）、8443（TUIC v5）、40000:50000（端口跳跃）。8500/8501 只听 127.0.0.1，不放行。
-AIMILI_FW_PORTS="${AIMILI_FW_PORTS:-8443 80 443 8444 8445 18443}"
+AIMILI_FW_PORTS="${AIMILI_FW_PORTS:-8443 80 443 8444 8445 8446 18443}"
 AIMILI_FW_UDP_PORTS="${AIMILI_FW_UDP_PORTS:-443 8443}"
 AIMILI_FW_ADDED="${AIMILI_FW_ADDED:-/etc/aimilivpn-fw.added}"
 aimili_fw_persist() {
@@ -65,8 +66,8 @@ aimili_fw_open() {
 # apt-get update 遇到坏的第三方源（缺 GPG 公钥 NO_PUBKEY、404 没有 Release 文件、未签名）不中断安装：
 # 识别报错的源，备份后临时注释/停用，再重试一次，并提示用户。系统官方源（ubuntu/debian）不动。
 aimili_apt_update() {
-    local out rc urls u f changed=0 disabled="" ad="${AIMILI_APT_DIR:-/etc/apt}"
-    out=$(LC_ALL=C apt-get update -q 2>&1); rc=$?
+    local out rc=0 urls u f changed=0 disabled="" ad="${AIMILI_APT_DIR:-/etc/apt}"
+    out=$(LC_ALL=C apt-get update -q 2>&1) || rc=$?
     printf '%s\n' "$out" | tail -n 40
     urls=$(printf '%s\n' "$out" | grep -E "NO_PUBKEY|EXPKEYSIG|is not signed|does not have a Release file|404 +Not Found|Release' no longer has a Release" \
         | grep -oE "https?://[^ ']+" | sed -E 's#/(dists/.*|InRelease|Release)$##; s#/+$##' | sort -u)
@@ -1293,14 +1294,15 @@ if [ "${INSTALL_RESI:-y}" = "y" ]; then
     fi
 fi
 
-SECRET_PATH="EJsW2EeBo9lY"
+RAND_PATH=$(python3 -c "import secrets, string; print(''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(12)))" 2>/dev/null || openssl rand -hex 6 2>/dev/null || echo "admin$RANDOM")
+SECRET_PATH="${RAND_PATH}"
 USERNAME="未配置"
 PASSWORD="未配置"
 UI_PORT=8501
 PROXY_PORT=8500
 AUTH_FILE="${INSTALL_DIR}/vpngate_data/ui_auth.json"
 if [ -f "$AUTH_FILE" ]; then
-    SECRET_PATH=$(python3 -c "import json; print(json.load(open('$AUTH_FILE')).get('secret_path', 'EJsW2EeBo9lY'))" 2>/dev/null || echo "EJsW2EeBo9lY")
+    SECRET_PATH=$(python3 -c "import json; print(json.load(open('$AUTH_FILE')).get('secret_path', '${RAND_PATH}'))" 2>/dev/null || echo "${RAND_PATH}")
     USERNAME=$(python3 -c "import json; print(json.load(open('$AUTH_FILE')).get('username', '未配置'))" 2>/dev/null || echo "未配置")
     PASSWORD=$(python3 -c "import json; print(json.load(open('$AUTH_FILE')).get('password', '未配置'))" 2>/dev/null || echo "未配置")
     UI_PORT=$(python3 -c "import json; print(json.load(open('$AUTH_FILE')).get('port', 8501))" 2>/dev/null || echo "8501")

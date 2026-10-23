@@ -19,15 +19,31 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Run AimiliVPN Code Gate (AST, Scope, Nginx, Topology)
+    - name: Install Sing-box Kernel (1.14.3)
+      run: |
+        curl -fsSL https://github.com/SagerNet/sing-box/releases/download/v1.14.3/sing-box-1.14.3-linux-amd64.tar.gz | tar -xz --strip-components=1 -C /usr/local/bin/
+        chmod +x /usr/local/bin/sing-box
+        sing-box version
+
+    - name: Install Static Analysis Tools (pyflakes, shellcheck)
+      run: |
+        pip install pyflakes
+        sudo apt-get update -qq && sudo apt-get install -y shellcheck
+
+    - name: Run AimiliVPN Code Gate V2.0 (AST, Scope, Topology, Sing-box Kernel Check)
       run: |
         python scripts/code_gate.py
 
+    - name: Python Static Analysis (pyflakes)
+      run: |
+        pyflakes aimili_cli.py vpngate_manager.py scripts/
+
     - name: Shell Syntax Check (bash -n)
       run: |
-        find . -name "*.sh" -exec bash -n {} +
+        find scripts/ -name "*.sh" -exec bash -n {} +
         bash -n install.sh
 
     - name: Python Bytecode Compilation Check (py_compile)
       run: |
         python -m compileall -q .
+

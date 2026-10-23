@@ -16,7 +16,7 @@ Bilingual: [中文](#中文) | [English](#english)
 8. **主动探测防御与自动化运维**：
    - 🎭 **HTML5 高保真本地伪装库**：内置科技云 SaaS、开发者工具箱/计算器、极客博客、2048 小游戏等 4 套可交互模板，完美抵御主动嗅探；
    - 🤖 **Telegram Bot 即时推送**：支持节点订阅一键下发至 TG、公网 IP 漂移告警、核心进程崩溃拉起告警；
-   - ⏰ **定时系统自愈与内存清理**：每日凌晨 4 点强制内核缓存释放 (`drop_caches`)、权威 HTTPS 时钟校准、15分钟进程看门狗；
+   - ⏰ **定时系统自愈与精准时钟同步**：每日凌晨 4 点权威 HTTPS 时钟校准、节点状态自愈检查与 15分钟进程看门狗；
 9. **工业级可靠性加固**：
    - 🛡️ **GOMEMLIMIT 软内存限制**：针对 128MB/512MB/1GB 等小内存/NAT VPS，动态测算 Go 堆内存配额，根除 OOM 崩溃；
    - 🔄 **事务快照与原子回滚**：配置更新遵循“备份 $\to$ 临时写入 $\to$ sing-box check 预检 $\to$ 原子替换 $\to$ 健康监控 $\to$ 异常秒级回滚”闭环；
@@ -180,8 +180,11 @@ ml singbox  # Sing-box 核心管理（start/stop/restart/logs/status）
 #### 【C 组：Cloudflare CDN / Argo 穿透节点】（应用 Anycast 三网优选 IP 赋能）
 15. `⛅ [CDN-优选IP·IPv4] VMess-WS-Argo【Anycast优选·Cloudflare全球破墙】`（连接地址使用测速优选 IP，SNI为Argo域名）
 16. `⛅ [CDN-小黄云·IPv4] VMess-xHTTP【Cloudflare-CDN·分块免流破墙】`（走 Cloudflare 小黄云 CDN 443）
-17. `⛅ [CDN-小黄云·IPv4] VLESS-WS-TLS【Cloudflare-CDN·小黄云破墙】`（经典 WebSocket 小黄云破墙）
+17. `⛅ [CDN-小黄云·IPv4] VMess-WS-TLS【Cloudflare-CDN·小黄云破墙】`（经典 WebSocket 小黄云破墙）
 18. `⛅ [CDN-小黄云·IPv6] VMess-xHTTP【Cloudflare-CDN-IPv6·分块穿透】`（Cloudflare Anycast IPv6 优选穿透）
+
+> 💡 **客户端协议兼容性说明**：AnyTLS (节点 7 & 8) 属于 Sing-box 官方专有防探测混淆协议，原生支持在 `sub.txt`、`singbox.json` 及 `nodes.txt` 订阅中下发；由于 Clash / Mihomo 官方尚未合并 AnyTLS 协议，`clash.yaml` 自动下发其余 16 个高可用节点，保障不同客户端的最佳兼容性。
+
 
 ---
 

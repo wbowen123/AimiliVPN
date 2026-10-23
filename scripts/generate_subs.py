@@ -37,16 +37,22 @@ def generate_subscriptions(nodes_data, output_dir):
     # --------------------------------------------------------------------------
     direct_host = domain if domain else public_ip
     cdn_host = domain if domain else public_ip
+    explicit_cdn = nodes_data.get("cdn_domain") or nodes_data.get("cf_cdn_host", "")
+    if explicit_cdn:
+        cdn_host = explicit_cdn.strip()
+
     if domain:
         clean_d = domain.lower()
         if clean_d.startswith("direct."):
             base_d = clean_d[7:]
             direct_host = clean_d
-            cdn_host = f"cdn.{base_d}"
+            if not cdn_host:
+                cdn_host = f"cdn.{base_d}"
         elif clean_d.startswith("cdn."):
             base_d = clean_d[4:]
             direct_host = f"direct.{base_d}"
-            cdn_host = clean_d
+            if not cdn_host:
+                cdn_host = clean_d
         else:
             cand_direct = f"direct.{clean_d}"
             try:
@@ -55,7 +61,8 @@ def generate_subscriptions(nodes_data, output_dir):
                 direct_host = cand_direct
             except Exception:
                 direct_host = domain
-            cdn_host = f"cdn.{clean_d}"
+            if not cdn_host:
+                cdn_host = f"cdn.{clean_d}"
 
     host = direct_host if direct_host else public_ip
     camouflage_sni = nodes_data.get("camouflage_domain", "gateway.icloud.com")
@@ -119,7 +126,7 @@ def generate_subscriptions(nodes_data, output_dir):
         # Cloudflare CDN / Argo 穿透节点 (明确标注优选 IP 赋能)
         "vmess_argo_v4":   "⛅ [CDN-优选IP·IPv4] VMess-WS-Argo【Anycast优选·Cloudflare全球破墙】",
         "vmess_cdn_v4":    "⛅ [CDN-小黄云·IPv4] VMess-xHTTP【Cloudflare-CDN·分块免流破墙】",
-        "vless_cdn_v4":    "⛅ [CDN-小黄云·IPv4] VLESS-WS-TLS【Cloudflare-CDN·小黄云破墙】",
+        "vless_cdn_v4":    "⛅ [CDN-小黄云·IPv4] VMess-WS-TLS【Cloudflare-CDN·小黄云破墙】",
         "vmess_cdn_v6":    "⛅ [CDN-小黄云·IPv6] VMess-xHTTP【Cloudflare-CDN-IPv6·分块穿透】"
     }
 
@@ -272,47 +279,50 @@ def generate_subscriptions(nodes_data, output_dir):
     # ==========================================================================
     # C. 生成 Cloudflare CDN 与 Argo 穿透节点 (注入 Anycast 优选 IP)
     # ==========================================================================
-    cdn_target_domain = argo_domain if argo_domain else cdn_host
-
-    if cdn_target_domain or domain:
-        active_cdn_host = cdn_target_domain if cdn_target_domain else domain
-
-        # C1. VMess-Argo (Cloudflare Argo 官方隧道穿透)
+    # C1. VMess-Argo (仅当配置了 Argo 隧道公网域名时激活，直通本地 8445 HTTP)
+    if argo_domain:
         vmess_argo_obj = {
             "v": "2", "ps": node_names["vmess_argo_v4"], "add": clean_ip, "port": 443,
             "id": direct_uuid, "aid": 0, "net": "http", "type": "none",
-            "host": active_cdn_host, "path": "/vmess", "tls": "tls", "sni": active_cdn_host
+            "host": argo_domain, "path": "/vmess", "tls": "tls", "sni": argo_domain
         }
         links.append("vmess://" + base64.b64encode(json.dumps(vmess_argo_obj).encode("utf-8")).decode("utf-8"))
         clash_proxies.append({
             "name": node_names["vmess_argo_v4"], "type": "vmess", "server": clean_ip, "port": 443,
             "uuid": direct_uuid, "alterId": 0, "cipher": "auto", "network": "http",
-            "http-opts": {"path": ["/vmess"], "headers": {"Host": [active_cdn_host]}},
-            "tls": True, "servername": active_cdn_host, "skip-cert-verify": False
+            "http-opts": {"path": ["/vmess"], "headers": {"Host": [argo_domain]}},
+            "tls": True, "servername": argo_domain, "skip-cert-verify": False
         })
 
+    # C2, C3, C4: Cloudflare CDN 小黄云代理节点 (严格使用 cdn_host 或自备主域名，严禁被 argo_domain 污染)
+    cf_cdn_host = cdn_host if cdn_host else domain
+    if cf_cdn_host:
         # C2. VMess-xHTTP CDN (开启小黄云，走 Cloudflare 8443 HTTPS 代理并经 Nginx 转发至 8445)
         vmess_cdn_obj = {
             "v": "2", "ps": node_names["vmess_cdn_v4"], "add": clean_ip, "port": 8443,
             "id": direct_uuid, "aid": 0, "net": "http", "type": "none",
-            "host": active_cdn_host, "path": "/vmess", "tls": "tls", "sni": active_cdn_host
+            "host": cf_cdn_host, "path": "/vmess", "tls": "tls", "sni": cf_cdn_host
         }
         links.append("vmess://" + base64.b64encode(json.dumps(vmess_cdn_obj).encode("utf-8")).decode("utf-8"))
         clash_proxies.append({
             "name": node_names["vmess_cdn_v4"], "type": "vmess", "server": clean_ip, "port": 8443,
             "uuid": direct_uuid, "alterId": 0, "cipher": "auto", "network": "http",
-            "http-opts": {"path": ["/vmess"], "headers": {"Host": [active_cdn_host]}},
-            "tls": True, "servername": active_cdn_host, "skip-cert-verify": False
+            "http-opts": {"path": ["/vmess"], "headers": {"Host": [cf_cdn_host]}},
+            "tls": True, "servername": cf_cdn_host, "skip-cert-verify": False
         })
 
-        # C3. VLESS-WS-TLS CDN (经典小黄云 WebSocket 破墙，走 Cloudflare 8443 经 Nginx 转发)
-        vless_cdn_link = f"vless://{direct_uuid}@{clean_ip}:8443?encryption=none&security=tls&sni={active_cdn_host}&type=ws&host={active_cdn_host}&path=%2Fvmess-ws#{urllib.parse.quote(node_names['vless_cdn_v4'])}"
-        links.append(vless_cdn_link)
+        # C3. VMess-WS-TLS CDN (小黄云 WebSocket 转发至 8446，严格对齐服务端 VMess 协议)
+        vmess_ws_cdn_obj = {
+            "v": "2", "ps": node_names["vless_cdn_v4"], "add": clean_ip, "port": 8443,
+            "id": direct_uuid, "aid": 0, "net": "ws", "type": "none",
+            "host": cf_cdn_host, "path": "/vmess-ws", "tls": "tls", "sni": cf_cdn_host
+        }
+        links.append("vmess://" + base64.b64encode(json.dumps(vmess_ws_cdn_obj).encode("utf-8")).decode("utf-8"))
         clash_proxies.append({
-            "name": node_names["vless_cdn_v4"], "type": "vless", "server": clean_ip, "port": 8443,
-            "uuid": direct_uuid, "network": "ws", "tls": True, "udp": True,
-            "servername": active_cdn_host, "ws-opts": {"path": "/vmess-ws", "headers": {"Host": active_cdn_host}},
-            "client-fingerprint": "chrome"
+            "name": node_names["vless_cdn_v4"], "type": "vmess", "server": clean_ip, "port": 8443,
+            "uuid": direct_uuid, "alterId": 0, "cipher": "auto", "network": "ws",
+            "ws-opts": {"path": "/vmess-ws", "headers": {"Host": cf_cdn_host}},
+            "tls": True, "servername": cf_cdn_host, "skip-cert-verify": False
         })
 
         # C4. IPv6 CDN 节点 (Cloudflare Anycast IPv6 优选)
@@ -321,14 +331,14 @@ def generate_subscriptions(nodes_data, output_dir):
             vmess_cdn_v6_obj = {
                 "v": "2", "ps": node_names["vmess_cdn_v6"], "add": cf_ipv6_clean, "port": 8443,
                 "id": direct_uuid, "aid": 0, "net": "http", "type": "none",
-                "host": active_cdn_host, "path": "/vmess", "tls": "tls", "sni": active_cdn_host
+                "host": cf_cdn_host, "path": "/vmess", "tls": "tls", "sni": cf_cdn_host
             }
             links.append("vmess://" + base64.b64encode(json.dumps(vmess_cdn_v6_obj).encode("utf-8")).decode("utf-8"))
             clash_proxies.append({
                 "name": node_names["vmess_cdn_v6"], "type": "vmess", "server": cf_ipv6_clean, "port": 8443,
                 "uuid": direct_uuid, "alterId": 0, "cipher": "auto", "network": "http",
-                "http-opts": {"path": ["/vmess"], "headers": {"Host": [active_cdn_host]}},
-                "tls": True, "servername": active_cdn_host, "skip-cert-verify": False
+                "http-opts": {"path": ["/vmess"], "headers": {"Host": [cf_cdn_host]}},
+                "tls": True, "servername": cf_cdn_host, "skip-cert-verify": False
             })
 
     # --------------------------------------------------------------------------
@@ -559,25 +569,25 @@ def generate_subscriptions(nodes_data, output_dir):
     })
 
     # 追加 CDN 节点到 Singbox 客户端配置
-    if cdn_target_domain or domain:
-        active_cdn_host = cdn_target_domain if cdn_target_domain else domain
+    if argo_domain:
         sb_outbounds_list.append({
             "type": "vmess", "tag": node_names["vmess_argo_v4"], "server": clean_ip, "server_port": 443,
             "uuid": direct_uuid, "security": "auto",
-            "transport": {"type": "http", "path": "/vmess", "host": [active_cdn_host]},
-            "tls": {"enabled": True, "server_name": active_cdn_host}
+            "transport": {"type": "http", "path": "/vmess", "host": [argo_domain]},
+            "tls": {"enabled": True, "server_name": argo_domain}
         })
+    if cf_cdn_host:
         sb_outbounds_list.append({
             "type": "vmess", "tag": node_names["vmess_cdn_v4"], "server": clean_ip, "server_port": 8443,
             "uuid": direct_uuid, "security": "auto",
-            "transport": {"type": "http", "path": "/vmess", "host": [active_cdn_host]},
-            "tls": {"enabled": True, "server_name": active_cdn_host}
+            "transport": {"type": "http", "path": "/vmess", "host": [cf_cdn_host]},
+            "tls": {"enabled": True, "server_name": cf_cdn_host}
         })
         sb_outbounds_list.append({
-            "type": "vless", "tag": node_names["vless_cdn_v4"], "server": clean_ip, "server_port": 8443,
-            "uuid": direct_uuid,
-            "transport": {"type": "ws", "path": "/vmess-ws", "headers": {"Host": active_cdn_host}},
-            "tls": {"enabled": True, "server_name": active_cdn_host}
+            "type": "vmess", "tag": node_names["vless_cdn_v4"], "server": clean_ip, "server_port": 8443,
+            "uuid": direct_uuid, "security": "auto",
+            "transport": {"type": "ws", "path": "/vmess-ws", "headers": {"Host": cf_cdn_host}},
+            "tls": {"enabled": True, "server_name": cf_cdn_host}
         })
 
     sb_all_tags = [o["tag"] for o in sb_outbounds_list]
@@ -633,7 +643,7 @@ def generate_subscriptions(nodes_data, output_dir):
         "interval": "3m"
     })
 
-    sb_final_outbounds = singbox_selectors + sb_outbounds_list + [{"type": "direct", "tag": "direct"}, {"type": "dns", "tag": "dns-out"}]
+    sb_final_outbounds = singbox_selectors + sb_outbounds_list + [{"type": "direct", "tag": "direct"}]
 
     sb_client_config = {
         "log": {"level": "warn", "timestamp": True},
@@ -643,8 +653,7 @@ def generate_subscriptions(nodes_data, output_dir):
                 {"tag": "local-dns", "type": "udp", "server": "223.5.5.5", "detour": "direct"}
             ],
             "rules": [
-                {"geosite": ["cn"], "server": "local-dns"},
-                {"clash_mode": ["Direct"], "server": "local-dns"}
+                {"clash_mode": "Direct", "server": "local-dns"}
             ],
             "final": "remote-dns",
             "strategy": "prefer_ipv4"
@@ -655,10 +664,9 @@ def generate_subscriptions(nodes_data, output_dir):
         "outbounds": sb_final_outbounds,
         "route": {
             "rules": [
-                {"protocol": "dns", "outbound": "dns-out"},
+                {"protocol": "dns", "action": "hijack-dns"},
                 {"ip_is_private": True, "outbound": "direct"},
-                {"geoip": ["cn", "private"], "outbound": "direct"},
-                {"geosite": ["cn"], "outbound": "direct"}
+                {"clash_mode": "Direct", "outbound": "direct"}
             ],
             "final": "🎯 手动选择",
             "auto_detect_interface": True

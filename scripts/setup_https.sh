@@ -13,6 +13,13 @@ ENABLE_IP_ACME="${AIMILIVPN_ENABLE_ACME_IP_CERT:-0}"
 ACME_AVAILABLE=0
 ACME_ISSUED=0
 
+C_RED="\033[0;31m"
+C_GREEN="\033[0;32m"
+C_YELLOW="\033[0;33m"
+C_RESET="\033[0m"
+YELLOW="\033[0;33m"
+PLAIN="\033[0m"
+
 if [ "$(id -u)" != "0" ]; then echo "错误: 需要 root 权限。" >&2; exit 1; fi
 
 service_enable() {
@@ -34,8 +41,8 @@ service_reload() {
 # apt-get update 遇到坏的第三方源（缺 GPG 公钥 NO_PUBKEY、404 没有 Release 文件、未签名）不中断安装：
 # 识别报错的源，备份后临时注释/停用，再重试一次，并提示用户。系统官方源（ubuntu/debian）不动。
 aimili_apt_update() {
-    local out rc urls u f changed=0 disabled="" ad="${AIMILI_APT_DIR:-/etc/apt}"
-    out=$(LC_ALL=C apt-get update -q 2>&1); rc=$?
+    local out rc=0 urls u f changed=0 disabled="" ad="${AIMILI_APT_DIR:-/etc/apt}"
+    out=$(LC_ALL=C apt-get update -q 2>&1) || rc=$?
     printf '%s\n' "$out" | tail -n 40
     urls=$(printf '%s\n' "$out" | grep -E "NO_PUBKEY|EXPKEYSIG|is not signed|does not have a Release file|404 +Not Found|Release' no longer has a Release" \
         | grep -oE "https?://[^ ']+" | sed -E 's#/(dists/.*|InRelease|Release)$##; s#/+$##' | sort -u)
@@ -186,8 +193,11 @@ else
 fi
 
 service_enable
-nginx -t
-service_restart
+if nginx -t >/dev/null 2>&1; then
+  service_restart
+else
+  echo -e "${YELLOW}[警告] Nginx 配置测试未通过，跳过即时重启，保留自签名降级配置。${PLAIN}"
+fi
 
 if [ "$ACME_AVAILABLE" = "1" ] && command -v certbot >/dev/null 2>&1; then
   if certbot certonly --webroot -w "$ACME_ROOT" --preferred-profile shortlived --ip-address "$PUBLIC_IP" --cert-name aimilivpn-ip --non-interactive --agree-tos --register-unsafely-without-email --keep-until-expiring; then
@@ -242,11 +252,10 @@ EOF
 fi
 
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
-  ufw allow 8443/tcp >/dev/null; ufw allow 8500/tcp >/dev/null; ufw allow 18443/tcp >/dev/null
+  ufw allow 8443/tcp >/dev/null; ufw allow 18443/tcp >/dev/null
 fi
 if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
   firewall-cmd --permanent --add-port=8443/tcp >/dev/null || true
-  firewall-cmd --permanent --add-port=8500/tcp >/dev/null || true
   firewall-cmd --permanent --add-port=18443/tcp >/dev/null || true
   firewall-cmd --reload >/dev/null || true
 fi

@@ -216,8 +216,8 @@ def print_web_dashboard():
     print(f"  * 管理员密码:       {C_YELLOW}{auth['password']}{C_RESET}")
     if auth.get("secret_path"):
         print(f"  * 防扫描动态后缀:   {C_BLUE}/{auth['secret_path']}/{C_RESET}")
-    print(f"----------------------------------------------------------------------")
-    print(f"  💡 提示: 面板支持动态住宅节点切换、分流模式管理与系统监控")
+    print("----------------------------------------------------------------------")
+    print("  💡 提示: 面板支持动态住宅节点切换、分流模式管理与系统监控")
     print(f"  💡 修改密码可在管理控制台执行: {C_YELLOW}ml password{C_RESET}")
     print(f"{C_GREEN}======================================================================{C_RESET}\n")
 
@@ -234,7 +234,7 @@ def print_subscription_card():
 
     if not sub["all_links"]:
         print(f"{C_RED}未检测到已生成的 Sing-box 节点配置！{C_RESET}")
-        print(f"请先运行以下命令一键部署全协议核心：")
+        print("请先运行以下命令一键部署全协议核心：")
         print(f"  {C_YELLOW}bash /opt/aimilivpn/scripts/setup_singbox.sh{C_RESET}\n")
         return
 
@@ -245,11 +245,11 @@ def print_subscription_card():
 
     print(f"\n{C_BOLD}【1. 多客户端通用聚合订阅地址】{C_RESET}")
     print(f"  * {C_GREEN}🌟 Base64 通用自适应订阅:{C_RESET} {C_BLUE}{C_BOLD}{sub['sub_url_18443']}{C_RESET}")
-    print(f"    (自适应客户端，完美适配 Shadowrocket 小火箭、v2rayN、Loon、Surge、Quantumult X)")
+    print("    (自适应客户端，完美适配 Shadowrocket 小火箭、v2rayN、Loon、Surge、Quantumult X)")
     print(f"  * {C_GREEN}🐱 Clash Meta (Mihomo):{C_RESET}   {C_BLUE}{C_BOLD}{sub['clash_url_18443']}{C_RESET}")
-    print(f"    (内置自动测速优选与故障转移策略组，支持 Clash Verge Rev、Mihomo Party)")
+    print("    (内置自动测速优选与故障转移策略组，支持 Clash Verge Rev、Mihomo Party)")
     print(f"  * {C_GREEN}📦 Sing-box 原生 1.10+ JSON:{C_RESET} {C_BLUE}{C_BOLD}{sub['singbox_url_18443']}{C_RESET}")
-    print(f"    (内置 Smart-DNS 分流与原生路由规则，开箱即用无需转换)")
+    print("    (内置 Smart-DNS 分流与原生路由规则，开箱即用无需转换)")
     print(f"  * {C_GREEN}📄 Plaintext 原始节点列表:{C_RESET}  {C_BLUE}{sub['nodes_txt_url']}{C_RESET}")
     print(f"  * 备用订阅地址:             {C_BLUE}{sub['sub_url_8443']}{C_RESET}")
 
@@ -340,8 +340,9 @@ def call_aimili_ml(args):
         aimili_ml.main()
     except ImportError:
         print(f"{C_RED}错误: 未找到 aimili_ml 核心模块（/opt/aimilivpn）。{C_RESET}")
-    except SystemExit:
-        pass
+    except SystemExit as se:
+        if se.code not in (None, 0):
+            sys.exit(se.code)
     except Exception as e:
         print(f"{C_RED}执行出错: {e}{C_RESET}")
 
@@ -446,9 +447,9 @@ def configure_residential_egress():
                 keep = input(f"是否保留原用户名 '{curr_user}'? [Y/n]: ").strip().lower()
                 if keep != 'n':
                     user = curr_user
-            pwd = input(f"请输入认证密码 (无密码则直接回车): ").strip()
+            pwd = input("请输入认证密码 (无密码则直接回车): ").strip()
             if not pwd and curr_pass:
-                keep = input(f"是否保留原密码? [Y/n]: ").strip().lower()
+                keep = input("是否保留原密码? [Y/n]: ").strip().lower()
                 if keep != 'n':
                     pwd = curr_pass
         except (KeyboardInterrupt, EOFError):
@@ -496,7 +497,7 @@ def interactive_menu():
         print("\n" + "=" * 60)
         print(f"{C_BOLD}{C_BLUE}         🚀 AimiliVPN & Sing-box 双核心管理控制台{C_RESET}")
         print("=" * 60)
-        print(f"【核心服务状态】")
+        print("【核心服务状态】")
         print(f"  AimiliVPN 住宅代理: {status['aimilivpn']}  (SOCKS5 端口: 8500)")
         print(f"  Sing-box 分流核心:  {status['singbox']}  (Reality: 443 | 住宅出口: {resi_mode})")
         print(f"  Nginx 入口转发:     {status['nginx']}  (管理: 8443 / 订阅: 18443)")
@@ -793,7 +794,7 @@ def main():
                 setup_script = os.path.join(INSTALL_DIR, "scripts", "setup_singbox.sh")
                 subprocess.call(["bash", setup_script])
             else:
-                print(f"可用 singbox 子命令: status, start, stop, restart, logs, setup")
+                print("可用 singbox 子命令: status, start, stop, restart, logs, setup")
             return
         elif cmd == "status":
             call_aimili_ml(["status"])

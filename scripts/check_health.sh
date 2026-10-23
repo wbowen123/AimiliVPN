@@ -90,6 +90,7 @@ check_port_listen "udp" "443"   "Hysteria 2" || true
 check_port_listen "udp" "8443"  "TUIC v5" || true
 check_port_listen "tcp" "8444"  "AnyTLS" || true
 check_port_listen "tcp" "8445"  "VMess-xHTTP" || true
+check_port_listen "tcp" "8446"  "VMess-WS" || true
 check_port_listen "tcp" "8443"  "Nginx HTTPS 管理后台" || true
 check_port_listen "tcp" "18443" "Nginx 全生态订阅入口" || true
 check_port_listen "tcp" "8500"  "Aimili SOCKS5 住宅网桥 (127.0.0.1)" || true

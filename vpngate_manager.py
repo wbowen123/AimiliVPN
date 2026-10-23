@@ -5,6 +5,7 @@ import sys
 import subprocess
 import shutil
 import re
+import time
 
 
 def _sync_core_if_needed():
@@ -138,6 +139,52 @@ def _apply_patches(mod):
             elif isinstance(v, (bytes, bytearray)):
                 setattr(mod, attr, _patch_bytes(v))
 
+    def _check_update_status(here_path, repo_name, current_tag, current_commit):
+        """动态检查 GitHub 官方仓库或本地 git 远端更新状态（带 60 秒内存缓存）"""
+        global _UPDATE_CACHE
+        now = time.time()
+        if "_UPDATE_CACHE" in globals() and (now - _UPDATE_CACHE.get("ts", 0)) < 60:
+            return _UPDATE_CACHE["result"]
+
+        has_update = False
+        relation = "up_to_date"
+        latest_commit = current_commit
+        msg = f"当前已经是最新正式版（{current_tag} · wbowen123）。"
+
+        try:
+            import urllib.request
+            import json
+            req = urllib.request.Request(
+                f"https://api.github.com/repos/{repo_name}/commits/main",
+                headers={"User-Agent": "AimiliVPN-Panel", "Accept": "application/vnd.github.v3+json"}
+            )
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                remote_sha = data.get("sha", "")[:8]
+                commit_msg = data.get("commit", {}).get("message", "").split("\n")[0]
+                if remote_sha and current_commit and remote_sha != current_commit:
+                    has_update = True
+                    relation = "behind"
+                    latest_commit = remote_sha
+                    msg = f"检测到 GitHub 官方仓库有新更新 [{remote_sha}]：{commit_msg}，请在终端运行 'ml update' 升级。"
+        except Exception:
+            try:
+                remote_commit = subprocess.check_output(
+                    ["git", "rev-parse", "--short=8", "origin/main"],
+                    cwd=here_path, stderr=subprocess.DEVNULL
+                ).decode().strip()
+                if remote_commit and current_commit and remote_commit != current_commit:
+                    has_update = True
+                    relation = "behind"
+                    latest_commit = remote_commit
+                    msg = f"检测到本地跟踪的远程分支有新更新 [{remote_commit}]，请在终端运行 'ml update' 升级。"
+            except Exception:
+                pass
+
+        res = (has_update, relation, latest_commit, msg)
+        _UPDATE_CACHE = {"ts": now, "result": res}
+        return res
+
     handler_cls = getattr(mod, "Handler", None)
     if handler_cls is not None:
         if hasattr(handler_cls, "do_GET"):
@@ -146,17 +193,20 @@ def _apply_patches(mod):
                 clean_path = self.path.split("?")[0].rstrip("/")
                 commit = _get_commit()
                 label = f"{VERSION_TAG} - {commit} (wbowen123)" if commit else f"{VERSION_TAG} (wbowen123)"
+                here_dir = os.path.dirname(os.path.abspath(__file__))
                 if clean_path == "/api/github_version":
                     return self.send_json({"ok": True, "current_version": label, "repository": REPO_NAME})
                 elif clean_path == "/api/github_update/check":
+                    has_up, rel, lat_commit, up_msg = _check_update_status(here_dir, REPO_NAME, VERSION_TAG, commit)
+                    latest_label = f"{VERSION_TAG} - {lat_commit} (wbowen123)" if lat_commit else label
                     return self.send_json({
                         "ok": True,
                         "current_version": label,
-                        "latest_version": label,
+                        "latest_version": latest_label,
                         "repository": REPO_NAME,
-                        "has_update": False,
-                        "relation": "up_to_date",
-                        "message": f"当前已经是最新正式版（{VERSION_TAG} · wbowen123）。"
+                        "has_update": has_up,
+                        "relation": rel,
+                        "message": up_msg
                     })
                 return orig_do_GET(self)
             handler_cls.do_GET = custom_do_GET
@@ -171,7 +221,7 @@ def _apply_patches(mod):
             orig_sj = handler_cls.send_json
             def custom_sj(self, data, *args, **kwargs):
                 if isinstance(data, dict):
-                    if "current_version" in data or "latest_version" in data:
+                    if "current_version" in data:
                         commit = _get_commit()
                         if not commit and "current_version" in data:
                             parts = str(data["current_version"]).split(" - ")

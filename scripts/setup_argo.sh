@@ -9,6 +9,7 @@ set -e
 
 INSTALL_DIR="/opt/aimilivpn"
 DATA_DIR="${INSTALL_DIR}/vpngate_data"
+SCRIPT_DIR="${INSTALL_DIR}/scripts"
 ARGO_JSON="${DATA_DIR}/argo_info.json"
 ARGO_LOG="/var/log/cloudflared-argo.log"
 SERVICE_FILE="/etc/systemd/system/cloudflared-argo.service"
@@ -17,7 +18,8 @@ CLOUDFLARED_BIN="/usr/local/bin/cloudflared"
 C_RED="\033[0;31m"
 C_GREEN="\033[0;32m"
 C_YELLOW="\033[0;33m"
-C_BLUE="\033[0;36m"
+C_BLUE="\033[0;34m"
+C_CYAN="\033[0;36m"
 C_BOLD="\033[1m"
 C_RESET="\033[0m"
 
@@ -244,12 +246,20 @@ EOF
     # 自动刷新订阅，注入包含公网域名的 Argo 节点
     if [[ -n "${domain}" ]]; then
         log_info "正在自动更新客户端聚合订阅，注入 Argo 穿透节点..."
-        if [[ -f "/usr/local/bin/aimilivpn-generate-subs" ]]; then
-            /usr/local/bin/aimilivpn-generate-subs >/dev/null 2>&1 || true
-        elif [[ -f "${SCRIPT_DIR}/generate_subs.py" ]]; then
-            python3 "${SCRIPT_DIR}/generate_subs.py" "${DATA_DIR}/singbox_nodes.json" /var/www/aimilivpn-sub >/dev/null 2>&1 || true
+        local sub_updated=0
+        if [[ -f "${SCRIPT_DIR}/generate_subs.py" && -f "${DATA_DIR}/singbox_nodes.json" ]]; then
+            if python3 "${SCRIPT_DIR}/generate_subs.py" "${DATA_DIR}/singbox_nodes.json" /var/www/aimilivpn-sub; then
+                sub_updated=1
+                if [[ -d "/var/lib/aimilivpn/subscriptions" ]]; then
+                    cp -f /var/www/aimilivpn-sub/* /var/lib/aimilivpn/subscriptions/ 2>/dev/null || true
+                fi
+            fi
         fi
-        log_info "订阅已更新完成，包含 Argo Anycast 优选节点！"
+        if [[ "${sub_updated}" -eq 1 ]]; then
+            log_info "订阅已更新完成，包含 Argo Anycast 优选节点！"
+        else
+            log_warn "未能自动刷新订阅文件，请手动运行 ml sub 更新客户端订阅！"
+        fi
     fi
 
     show_status

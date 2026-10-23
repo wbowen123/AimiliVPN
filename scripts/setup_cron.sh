@@ -73,11 +73,10 @@ run_maintenance() {
     echo "=========================================================="
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 开始执行 AimiliVPN 深度系统维护..."
 
-    # 1. 内存同步与缓存释放
-    echo "1. 正在同步磁盘并释放 Linux 内核页面缓存 (drop_caches)..."
+    # 1. 磁盘脏数据回写与系统状态检查
+    echo "1. 正在同步磁盘文件系统 (sync)..."
     sync
-    echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
-    echo "   内存清理完毕: 当前可用内存 $(free -m | awk '/Mem:/ {print $7}') MB"
+    echo "   内存状态: 当前可用内存 $(free -m 2>/dev/null | awk '/Mem:/ {print $7}') MB"
 
     # 2. 权威 HTTPS 时钟校准
     if [[ -x "${INSTALL_DIR}/scripts/check_time_sync.sh" ]]; then
@@ -139,6 +138,17 @@ run_watchdog() {
     if [[ -n "${cur_ip}" && -n "${old_ip}" && "${cur_ip}" != "${old_ip}" && "${old_ip}" != "您的服务器公网IP" ]]; then
         echo "[${now}] [WATCHDOG] 🔔 检测到 VPS 公网 IP 发生变更: ${old_ip} -> ${cur_ip}，正在自动更新配置与订阅..."
         echo "${cur_ip}" > "${ip_file}"
+        if [[ -f "${DATA_DIR}/singbox_nodes.json" ]]; then
+            python3 -c "
+import json
+p = '${DATA_DIR}/singbox_nodes.json'
+try:
+    with open(p, 'r', encoding='utf-8') as f: d = json.load(f)
+    d['public_ip'] = '${cur_ip}'
+    with open(p, 'w', encoding='utf-8') as f: json.dump(d, f, indent=2, ensure_ascii=False)
+except Exception: pass
+" || true
+        fi
         if [[ -f "${INSTALL_DIR}/scripts/generate_subs.py" && -f "${DATA_DIR}/singbox_nodes.json" ]]; then
             python3 "${INSTALL_DIR}/scripts/generate_subs.py" "${DATA_DIR}/singbox_nodes.json" "/var/www/aimilivpn-sub" >> "${MAINT_LOG}" 2>&1 || true
             if [[ -d "/var/lib/aimilivpn/subscriptions" ]]; then

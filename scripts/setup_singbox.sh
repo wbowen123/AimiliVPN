@@ -251,8 +251,6 @@ cat > "$SB_CONFIG_TMP" <<EOF
       "tag": "vless-in",
       "listen": "::",
       "listen_port": 443,
-      "sniff": true,
-      "sniff_override_destination": false,
       "users": [
         {
           "name": "direct-user",
@@ -413,6 +411,10 @@ cat > "$SB_CONFIG_TMP" <<EOF
   ],
   "route": {
     "rules": [
+      {
+        "action": "sniff",
+        "sniffer": ["tls", "http", "quic", "dns"]
+      },
       {
         "ip_is_private": true,
         "outbound": "direct-out"
@@ -619,9 +621,9 @@ if command -v nginx >/dev/null 2>&1; then
     fi
 fi
 
-# 14. 防火墙端口放行 (放行 TCP: 443, 8444, 8445, 18443; UDP: 443, 8443 及 40000-50000 跳跃端口)
+# 14. 防火墙端口放行 (放行 TCP: 443, 8444, 8445, 8446, 18443; UDP: 443, 8443 及 40000-50000 跳跃端口)
 if command -v iptables >/dev/null 2>&1; then
-    for p in 443 8444 8445 18443; do
+    for p in 443 8444 8445 8446 18443; do
         iptables -C INPUT -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || \
         iptables -I INPUT 1 -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || true
     done

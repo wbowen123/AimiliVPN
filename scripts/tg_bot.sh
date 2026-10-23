@@ -116,8 +116,38 @@ configure_bot() {
 EOF
     chmod 600 "${TG_JSON}"
     log_info "配置已成功保存至 ${TG_JSON} (权限 600 已加固)"
+
+    if command -v systemctl >/dev/null 2>&1; then
+        setup_systemd_service
+    fi
+
     echo -e "\n正在向您的 Telegram 发送测试消息..."
     send_test_message
+}
+
+setup_systemd_service() {
+    local service_path="/etc/systemd/system/aimilivpn-tgbot.service"
+    cat > "${service_path}" <<EOF
+[Unit]
+Description=AimiliVPN Telegram Bot Service
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/bin/bash ${INSTALL_DIR}/scripts/tg_bot.sh daemon
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl enable aimilivpn-tgbot.service >/dev/null 2>&1 || true
+    systemctl restart aimilivpn-tgbot.service >/dev/null 2>&1 || true
+    log_info "已配置并启动 Telegram Bot 常驻后台服务 (aimilivpn-tgbot.service)"
 }
 
 send_test_message() {
@@ -151,9 +181,11 @@ send_subscriptions() {
         return 1
     fi
 
-    local python_cmd="
-import json, os
-data_dir = '${DATA_DIR}'
+    local content
+    content=$(python3 - "${DATA_DIR}" <<'EOF'
+import sys, json, os
+
+data_dir = sys.argv[1]
 nodes_file = os.path.join(data_dir, 'singbox_nodes.json')
 links_file = os.path.join(data_dir, 'singbox_links.txt')
 sub_dir = '/var/www/aimilivpn-sub'
@@ -161,43 +193,51 @@ sub_dir = '/var/www/aimilivpn-sub'
 domain = ''
 if os.path.exists(nodes_file):
     try:
-        with open(nodes_file) as f:
+        with open(nodes_file, encoding='utf-8') as f:
             domain = json.load(f).get('domain', '')
-    except: pass
+    except Exception: pass
 
 ip = '您的IP'
 ip_file = os.path.join(data_dir, 'public_ip.txt')
 if os.path.exists(ip_file):
     try:
-        with open(ip_file) as f: ip = f.read().strip()
-    except: pass
+        with open(ip_file, encoding='utf-8') as f: ip = f.read().strip()
+    except Exception: pass
 
 host = domain if domain else ip
 sub_url = f'https://{host}:18443/sub.txt'
 clash_url = f'https://{host}:18443/clash.yaml'
 singbox_url = f'https://{host}:18443/singbox.json'
 
-text = '⚡ <b>AimiliVPN 全协议订阅推送</b>\\n\\n'
-text += f'🌐 <b>通用 HTTPS 订阅:</b>\\n<code>{sub_url}</code>\\n\\n'
-text += f'🐱 <b>Clash / Mihomo 订阅:</b>\\n<code>{clash_url}</code>\\n\\n'
-text += f'📦 <b>Sing-box 格式配置:</b>\\n<code>{singbox_url}</code>\\n\\n'
+lines = [
+    '⚡ <b>AimiliVPN 全协议订阅推送</b>',
+    '',
+    '🌐 <b>通用 HTTPS 订阅:</b>',
+    f'<code>{sub_url}</code>',
+    '',
+    '🐱 <b>Clash / Mihomo 订阅:</b>',
+    f'<code>{clash_url}</code>',
+    '',
+    '📦 <b>Sing-box 格式配置:</b>',
+    f'<code>{singbox_url}</code>',
+    ''
+]
 
 nodes = []
 if os.path.exists(os.path.join(sub_dir, 'nodes.txt')):
-    with open(os.path.join(sub_dir, 'nodes.txt')) as f:
+    with open(os.path.join(sub_dir, 'nodes.txt'), encoding='utf-8') as f:
         nodes = [l.strip() for l in f if l.strip() and not l.startswith('#')]
 elif os.path.exists(links_file):
-    with open(links_file) as f:
+    with open(links_file, encoding='utf-8') as f:
         nodes = [l.strip() for l in f if l.strip() and not l.startswith('#')]
 
 if nodes:
-    text += f'📋 <b>已激活节点数:</b> {len(nodes)} 个\\n'
-    text += '💡 推荐直接复制上方 HTTPS 订阅 URL 导入 Shadowrocket / Clash Verge / v2rayN 即可自动同步全部节点。'
+    lines.append(f'📋 <b>已激活节点数:</b> {len(nodes)} 个')
+    lines.append('💡 推荐直接复制上方 HTTPS 订阅 URL 导入 Shadowrocket / Clash Verge / v2rayN 即可自动同步全部节点。')
 
-print(text)
-"
-    local content
-    content=$(python3 -c "${python_cmd}")
+print('\n'.join(lines))
+EOF
+)
     send_tg_message "${content}"
     log_info "订阅已推送至 Telegram！"
 }
@@ -213,7 +253,80 @@ send_alert() {
     msg+="⏰ <b>发生时间:</b> $(date '+%Y-%m-%d %H:%M:%S')\n"
     msg+="📝 <b>详情:</b> ${body}\n"
 
-    send_tg_message "${msg}" >/dev/null 2>&1 || true
+    if ! send_tg_message "${msg}"; then
+        log_warn "Telegram 告警推送失败，请核对 Bot Token 及网络配置。"
+        return 1
+    fi
+    return 0
+}
+
+run_daemon() {
+    get_tg_config
+    if [[ -z "${BOT_TOKEN}" || -z "${CHAT_ID}" ]]; then
+        log_err "未配置 Telegram Bot Token 或 Chat ID，Daemon 退出。"
+        exit 1
+    fi
+    log_info "启动 AimiliVPN Telegram Bot 守护进程..."
+    python3 - "${TG_JSON}" "${INSTALL_DIR}" <<'EOF'
+import sys, os, time, json, urllib.request, urllib.parse, subprocess
+
+tg_json = sys.argv[1]
+install_dir = sys.argv[2]
+
+if not os.path.exists(tg_json):
+    sys.exit(0)
+
+try:
+    with open(tg_json, 'r', encoding='utf-8') as f:
+        cfg = json.load(f)
+    token = cfg.get('bot_token', '')
+    allowed_chat = str(cfg.get('chat_id', ''))
+except Exception:
+    sys.exit(1)
+
+if not token or not allowed_chat:
+    sys.exit(0)
+
+def send_msg(chat_id, text):
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True}
+        req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            pass
+    except Exception:
+        pass
+
+offset = 0
+while True:
+    try:
+        url = f"https://api.telegram.org/bot{token}/getUpdates?offset={offset}&timeout=20"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            if data.get("ok"):
+                for update in data.get("result", []):
+                    offset = update["update_id"] + 1
+                    msg = update.get("message", {})
+                    chat = str(msg.get("chat", {}).get("id", ""))
+                    if chat != allowed_chat:
+                        continue
+                    text = msg.get("text", "").strip()
+                    if text in ("/start", "/help"):
+                        send_msg(chat, "👋 <b>您好！我是 AimiliVPN 专属管理机器人。</b>\n\n可用指令：\n/nodes - 提取全协议 10 大节点与订阅链接\n/status - 检查 VPS 运行与服务健康状态\n/help - 显示此帮助信息")
+                    elif text == "/nodes":
+                        sub_script = os.path.join(install_dir, "scripts", "tg_bot.sh")
+                        subprocess.run(["/bin/bash", sub_script, "sub"], timeout=30)
+                    elif text == "/status":
+                        health_script = os.path.join(install_dir, "scripts", "check_health.sh")
+                        try:
+                            st = subprocess.check_output(["/bin/bash", health_script], stderr=subprocess.STDOUT, timeout=15).decode('utf-8', errors='ignore')
+                            send_msg(chat, f"📊 <b>VPS 运行状态:</b>\n<pre>{st[:3000]}</pre>")
+                        except Exception as e:
+                            send_msg(chat, f"⚠️ 获取状态失败: {e}")
+    except Exception:
+        time.sleep(5)
+EOF
 }
 
 show_status() {
@@ -287,6 +400,12 @@ case "${1:-}" in
         shift
         send_alert "$@"
         ;;
+    daemon)
+        run_daemon
+        ;;
+    service)
+        setup_systemd_service
+        ;;
     status|info)
         show_status
         ;;
@@ -294,7 +413,7 @@ case "${1:-}" in
         menu
         ;;
     *)
-        echo "用法: $0 {config|test|sub|alert <title> <message>|status|menu}"
+        echo "用法: $0 {config|test|sub|alert <title> <message>|status|daemon|service|menu}"
         exit 1
         ;;
 esac

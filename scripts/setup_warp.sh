@@ -179,6 +179,8 @@ mode = sys.argv[3]
 with open(cfg_file, "r", encoding="utf-8") as f:
     cfg = json.load(f)
 
+endpoints = cfg.get("endpoints", [])
+endpoints = [e for e in endpoints if e.get("tag") != "warp-out"]
 outbounds = cfg.get("outbounds", [])
 outbounds = [o for o in outbounds if o.get("tag") != "warp-out"]
 
@@ -194,19 +196,25 @@ if mode != "off" and os.path.exists(warp_file):
     if warp.get("v6"):
         addrs.append(warp.get("v6"))
 
-    warp_out = {
+    warp_endpoint = {
         "type": "wireguard",
         "tag": "warp-out",
-        "server": server_host,
-        "server_port": server_port,
-        "local_address": addrs,
+        "address": addrs,
         "private_key": warp.get("private_key", ""),
-        "peer_public_key": warp.get("peer_pub", "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo="),
-        "reserved": [0, 0, 0],
+        "peers": [
+            {
+                "address": server_host,
+                "port": server_port,
+                "public_key": warp.get("peer_pub", "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo="),
+                "allowed_ips": ["0.0.0.0/0", "::/0"],
+                "reserved": [0, 0, 0]
+            }
+        ],
         "mtu": 1420
     }
-    outbounds.append(warp_out)
+    endpoints.append(warp_endpoint)
 
+cfg["endpoints"] = endpoints
 cfg["outbounds"] = outbounds
 
 # 处理 route rules (严格限定仅对 direct-user 生效，绝对不劫持住宅家宽出口！)
@@ -245,10 +253,16 @@ warp_rule = None
 if mode.startswith("custom:"):
     raw_sites = mode.split(":", 1)[1]
     sites = [s.strip() for s in raw_sites.split(",") if s.strip()]
-    if sites:
+    formatted_sites = []
+    for s in sites:
+        if "." in s:
+            formatted_sites.append(s)
+        else:
+            formatted_sites.extend([f"{s}.com", f"{s}.net", f"{s}.org", f"{s}.io"])
+    if formatted_sites:
         warp_rule = {
             "auth_user": ["direct-user"],
-            "domain_suffix": sites,
+            "domain_suffix": formatted_sites,
             "outbound": "warp-out"
         }
 elif mode == "ai":
