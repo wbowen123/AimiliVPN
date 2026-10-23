@@ -43,6 +43,10 @@ jobs:
         find scripts/ -name "*.sh" -exec bash -n {} +
         bash -n install.sh
 
+    - name: Shell Static Analysis (shellcheck)
+      run: |
+        shellcheck -S error -e SC1091 scripts/*.sh install.sh
+
     - name: Python Bytecode Compilation Check (py_compile)
       run: |
         python -m compileall -q .

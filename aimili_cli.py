@@ -15,7 +15,7 @@ INSTALL_DIR = "/opt/aimilivpn"
 DATA_DIR = os.path.join(INSTALL_DIR, "vpngate_data")
 KEY_FILE = os.path.join(DATA_DIR, "singbox_keys.json")
 NODES_JSON = os.path.join(DATA_DIR, "singbox_nodes.json")
-LINKS_FILE = os.path.join(DATA_DIR, "singbox_links.txt")
+LINKS_FILE = os.path.join(DATA_DIR, "nodes.txt")
 AUTH_FILE = os.path.join(DATA_DIR, "ui_auth.json")
 PROXY_ENV = "/etc/default/aimilivpn"
 
@@ -142,6 +142,8 @@ def get_subscription_data():
     all_links = []
     nodes_txt_path = "/var/www/aimilivpn-sub/nodes.txt"
     if not os.path.exists(nodes_txt_path):
+        nodes_txt_path = os.path.join(DATA_DIR, "nodes.txt")
+    if not os.path.exists(nodes_txt_path):
         nodes_txt_path = os.path.join(DATA_DIR, "singbox_links.txt")
     if os.path.exists(nodes_txt_path):
         try:
@@ -150,9 +152,22 @@ def get_subscription_data():
         except Exception:
             pass
 
-    direct_links = [l for l in all_links if "直连" in l or "原生" in l]
-    resi_links = [l for l in all_links if "住宅" in l or "家宽" in l]
-    argo_links = [l for l in all_links if "Argo" in l or "CDN" in l]
+    import urllib.parse, base64
+
+    def _get_link_text(l):
+        try:
+            if l.startswith("vmess://"):
+                b64 = l[8:]
+                padded = b64 + "=" * ((4 - len(b64) % 4) % 4)
+                v_obj = json.loads(base64.b64decode(padded).decode("utf-8", errors="ignore"))
+                return v_obj.get("ps", "")
+            return urllib.parse.unquote(l)
+        except Exception:
+            return l
+
+    direct_links = [l for l in all_links if "直连" in _get_link_text(l) or "原生" in _get_link_text(l)]
+    resi_links = [l for l in all_links if "住宅" in _get_link_text(l) or "家宽" in _get_link_text(l)]
+    argo_links = [l for l in all_links if "Argo" in _get_link_text(l) or "CDN" in _get_link_text(l)]
 
     return {
         "public_ip": public_ip,

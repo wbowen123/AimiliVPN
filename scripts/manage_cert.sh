@@ -310,12 +310,21 @@ force_renew_cert() {
     if command -v certbot >/dev/null 2>&1; then
         if certbot renew --force-renewal; then
             echo -e "${GREEN}  -> Certbot 证书续期成功！${PLAIN}"
+            local le_live="/etc/letsencrypt/live/${domain}"
+            [ ! -d "$le_live" ] && le_live="/etc/letsencrypt/live/aimilivpn-ip"
+            if [ -d "$le_live" ] && [ -f "$le_live/fullchain.pem" ]; then
+                cp -f "$le_live/fullchain.pem" "$CERT_FILE"
+                cp -f "$le_live/privkey.pem" "$KEY_FILE"
+                chmod 644 "$CERT_FILE"
+                chmod 600 "$KEY_FILE"
+            fi
             sync_cert_and_reload "$domain"
             return 0
         fi
     fi
 
     echo -e "${RED}续期失败，请检查 80 端口连通性。${PLAIN}"
+    return 1
 }
 
 reset_ip_self_signed() {
@@ -359,14 +368,16 @@ sync_cert_and_reload() {
     [ ! -f "$ng_conf" ] && ng_conf="/etc/nginx/http.d/aimilivpn-production.conf"
     if [ -f "$ng_conf" ]; then
         python3 -c "
-p = '$ng_conf'
-dom = '${domain:-_}'
-with open(p, 'r', encoding='utf-8') as f: c = f.read()
-import re
-# 仅精确替换 8443 ssl 块内的 server_name，坚决不触碰 80 端口伪装站 server_name _;
-c = re.sub(r'(listen\s+8443\s+ssl;[^{]*?server_name\s+)[^;]+;', r'\g<1>' + dom + ';', c)
-with open(p, 'w', encoding='utf-8') as f: f.write(c)
-" || true
+import sys, re
+p = sys.argv[1]
+dom = sys.argv[2]
+with open(p, 'r', encoding='utf-8') as f:
+    c = f.read()
+repl = lambda m: m.group(1) + dom + ';'
+c = re.sub(r'(listen\s+(?:\[::\]:)?8443\s+ssl;[^{]*?server_name\s+)[^;]+;', repl, c)
+with open(p, 'w', encoding='utf-8') as f:
+    f.write(c)
+" "$ng_conf" "${domain:-_}" 2>/dev/null || true
     fi
 
     # 4. 热重载 Web 与代理服务

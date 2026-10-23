@@ -181,7 +181,17 @@ fi
 install -m 0644 "$ROOT_DIR/scripts/nginx/aimilivpn-production.conf" "$NGINX_CONF"
 NGINX_SERVER_NAME="${ADOPTED_DOMAIN:-${AIMILIVPN_DOMAIN:-}}"
 if [ -n "$NGINX_SERVER_NAME" ]; then
-  sed -i "s/server_name _;/server_name ${NGINX_SERVER_NAME};/g" "$NGINX_CONF"
+  python3 -c "
+import sys, re
+path = sys.argv[1]
+dom = sys.argv[2]
+with open(path, 'r', encoding='utf-8') as f:
+    c = f.read()
+repl = lambda m: m.group(1) + dom + ';'
+c = re.sub(r'(listen\s+(?:\[::\]:)?8443\s+ssl;[^{]*?server_name\s+)[^;]+;', repl, c)
+with open(path, 'w', encoding='utf-8') as f:
+    f.write(c)
+" "$NGINX_CONF" "$NGINX_SERVER_NAME" 2>/dev/null || true
 fi
 rm -f "$ACME_CONF"
 
@@ -214,6 +224,7 @@ install -m 0600 /etc/letsencrypt/live/aimilivpn-ip/privkey.pem /etc/aimilivpn/tl
 if command -v systemctl >/dev/null 2>&1; then systemctl reload nginx; else rc-service nginx reload || rc-service nginx restart; fi
 HOOK
       chmod 755 /etc/letsencrypt/renewal-hooks/deploy/aimilivpn-nginx
+      ACME_ISSUED=1
       echo "已获得 Let's Encrypt 公网可信 IP 证书。"
     fi
   else

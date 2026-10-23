@@ -1009,21 +1009,21 @@ if [ ! -f "$AUTH_FILE" ]; then
     fi
     
     UI_PORT=8501
-    SECRET_PATH=$(python3 -c "import random, string; print(''.join(random.choices(string.ascii_letters + string.digits, k=12)))")
+    SECRET_PATH=$(python3 -c "import secrets, string; print(''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(12)))")
     UI_PASSWORD=$(python3 -c "
-import random, string
+import secrets, string
 chars = string.ascii_letters + string.digits
 while True:
-    pwd = ''.join(random.choices(chars, k=12))
+    pwd = ''.join(secrets.choice(chars) for _ in range(12))
     if any(c.islower() for c in pwd) and any(c.isupper() for c in pwd) and any(c.isdigit() for c in pwd):
         print(pwd)
         break
 ")
     UI_USERNAME=$(python3 -c "
-import random, string
+import secrets, string
 chars = string.ascii_letters + string.digits
 while True:
-    uname = ''.join(random.choices(chars, k=12))
+    uname = ''.join(secrets.choice(chars) for _ in range(12))
     if uname[0].isalpha() and any(c.islower() for c in uname) and any(c.isupper() for c in uname) and any(c.isdigit() for c in uname):
         print(uname)
         break
@@ -1311,11 +1311,23 @@ if [ -f "$AUTH_FILE" ]; then
 fi
 
 echo -e "正在获取 VPS 公网 IP..."
-PUBLIC_IP=$(curl -s --max-time 3 https://api.ipify.org || curl -s --max-time 3 https://ifconfig.me || curl -s --max-time 3 icanhazip.com || echo "您的服务器公网IP")
-echo -n "$PUBLIC_IP" > "${INSTALL_DIR}/vpngate_data/public_ip.txt"
+PUBLIC_IP=$(curl -4fsS --connect-timeout 4 --max-time 8 https://api.ipify.org 2>/dev/null || \
+            curl -4fsS --connect-timeout 4 --max-time 8 https://ifconfig.me 2>/dev/null || \
+            curl -4fsS --connect-timeout 4 --max-time 8 https://icanhazip.com 2>/dev/null || echo "")
+PUBLIC_IP=$(echo "$PUBLIC_IP" | tr -d '[:space:]')
+if [[ "$PUBLIC_IP" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+    echo -n "$PUBLIC_IP" > "${INSTALL_DIR}/vpngate_data/public_ip.txt"
+else
+    PUBLIC_IP="您的服务器公网IP"
+fi
 
 echo -e "正在获取 VPS 公网 IPv6..."
-PUBLIC_IPV6=$(curl -6 -s --max-time 3 https://api.ipify.org || curl -6 -s --max-time 3 https://ifconfig.me || curl -6 -s --max-time 3 icanhazip.com || echo "")
+PUBLIC_IPV6=$(curl -6fsS --connect-timeout 4 --max-time 8 https://api64.ipify.org 2>/dev/null || \
+              curl -6fsS --connect-timeout 4 --max-time 8 https://ipv6.icanhazip.com 2>/dev/null || echo "")
+PUBLIC_IPV6=$(echo "$PUBLIC_IPV6" | tr -d '[:space:]')
+if [ -n "$PUBLIC_IPV6" ]; then
+    echo -n "$PUBLIC_IPV6" > "${INSTALL_DIR}/vpngate_data/public_ipv6.txt"
+fi
 
 # 列出本机对外监听的端口（云防火墙/安全组需放行），TCP 与 UDP 分开
 aimili_public_ports() {

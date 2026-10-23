@@ -168,6 +168,15 @@ if [ -z "$DOMAIN" ] && [ -f /etc/aimilivpn/tls/fullchain.pem ] && command -v ope
 fi
 DOMAIN=$(echo "$DOMAIN" | tr -d '[:space:]')
 
+CDN_DOMAIN="${AIMILIVPN_CDN_DOMAIN:-}"
+if [ -z "$CDN_DOMAIN" ] && [ -f "$DATA_DIR/singbox_nodes.json" ]; then
+    CDN_DOMAIN=$(python3 -c "import json; print(json.load(open('$DATA_DIR/singbox_nodes.json')).get('cdn_domain',''))" 2>/dev/null || true)
+fi
+if [ -z "$CDN_DOMAIN" ] && [ -f "$PROXY_ENV_FILE" ]; then
+    CDN_DOMAIN=$(grep '^AIMILIVPN_CDN_DOMAIN=' "$PROXY_ENV_FILE" | cut -d'=' -f2 | tr -d '"'"' " || true)
+fi
+CDN_DOMAIN=$(echo "$CDN_DOMAIN" | tr -d '[:space:]')
+
 # 5. 伪装域名 (SNI) 智能测速优选
 REQUESTED_SNI="${1:-${JIUHEYI_REALITY_DOMAIN:-}}"
 CAMOUFLAGE_DOMAIN=""
@@ -186,6 +195,7 @@ if [ -f /etc/aimilivpn/tls/fullchain.pem ] && [ -f /etc/aimilivpn/tls/privkey.pe
     echo -e "${GREEN}  -> 检测到系统已存在有效域名证书，直接复用${PLAIN}"
     cp -f /etc/aimilivpn/tls/fullchain.pem "$CERT_FILE"
     cp -f /etc/aimilivpn/tls/privkey.pem "$KEY_FILE"
+    chmod 600 "$KEY_FILE"
 elif [ ! -f "$CERT_FILE" ] || [ ! -f "$KEY_FILE" ]; then
     echo -e "${YELLOW}  -> 未检测到现成域名证书，自动生成自签 ECC P-256 IP/域名通用证书...${PLAIN}"
     if command -v openssl >/dev/null 2>&1; then
@@ -457,8 +467,11 @@ with open('$SB_CONFIG_TMP', 'w') as f:
 "
 
 # 语法校验与平滑降级（如 AnyTLS 或 Salamander obfs 在特定平台不兼容）
+ANYTLS_PORT=8444
 if ! "$SB_BIN" check -c "$SB_CONFIG_TMP" >/dev/null 2>&1; then
     echo -e "${YELLOW}  -> 检测到部分前沿特性在当前内核受限，执行自愈降级处理...${PLAIN}"
+    HY2_OBFS=""
+    ANYTLS_PORT=0
     python3 -c "
 import json
 with open('$SB_CONFIG_TMP', 'r') as f:
@@ -584,6 +597,7 @@ cat > "$NODES_JSON" <<EOF
   "public_ip": "${PUBLIC_IP}",
   "public_ipv6": "${PUBLIC_IPV6}",
   "domain": "${DOMAIN}",
+  "cdn_domain": "${CDN_DOMAIN}",
   "camouflage_domain": "${CAMOUFLAGE_DOMAIN}",
   "public_key": "${PUBLIC_KEY}",
   "short_id": "${SHORT_ID}",
@@ -597,7 +611,7 @@ cat > "$NODES_JSON" <<EOF
   "vless_port": 443,
   "hy2_port": 443,
   "tuic_port": 8443,
-  "anytls_port": 8444,
+  "anytls_port": ${ANYTLS_PORT},
   "vmess_port": 8445
 }
 EOF
@@ -627,7 +641,8 @@ path = sys.argv[1]
 dom = sys.argv[2]
 with open(path, 'r', encoding='utf-8') as f:
     c = f.read()
-c = re.sub(r'(listen\s+(?:\[::\]:)?8443\s+ssl;[^{]*?server_name\s+)[^;]+;', r'\g<1>' + dom + ';', c)
+repl = lambda m: m.group(1) + dom + ';'
+c = re.sub(r'(listen\s+(?:\[::\]:)?8443\s+ssl;[^{]*?server_name\s+)[^;]+;', repl, c)
 with open(path, 'w', encoding='utf-8') as f:
     f.write(c)
 " "$NGINX_CONF_DEST" "$DOMAIN" 2>/dev/null || true
@@ -641,9 +656,9 @@ if command -v nginx >/dev/null 2>&1; then
     fi
 fi
 
-# 14. 防火墙端口放行 (放行 TCP: 443, 8444, 8445, 8446, 18443; UDP: 443, 8443 及 40000-50000 跳跃端口)
+# 14. 防火墙端口放行 (放行 TCP: 443, 8443, 8444, 8445, 8446, 18443; UDP: 443, 8443 及 40000-50000 跳跃端口)
 if command -v iptables >/dev/null 2>&1; then
-    for p in 443 8444 8445 8446 18443; do
+    for p in 443 8443 8444 8445 8446 18443; do
         iptables -C INPUT -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || \
         iptables -I INPUT 1 -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || true
     done
@@ -656,6 +671,7 @@ if command -v iptables >/dev/null 2>&1; then
 fi
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
     ufw allow 443/tcp comment aimilivpn >/dev/null 2>&1 || true
+    ufw allow 8443/tcp comment aimilivpn >/dev/null 2>&1 || true
     ufw allow 8444/tcp comment aimilivpn >/dev/null 2>&1 || true
     ufw allow 8445/tcp comment aimilivpn >/dev/null 2>&1 || true
     ufw allow 8446/tcp comment aimilivpn >/dev/null 2>&1 || true
@@ -665,7 +681,7 @@ if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: a
     ufw allow 40000:50000/udp comment aimilivpn >/dev/null 2>&1 || true
 fi
 if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-    firewall-cmd --permanent --add-port={443,8444,8445,8446,18443}/tcp >/dev/null 2>&1 || true
+    firewall-cmd --permanent --add-port={443,8443,8444,8445,8446,18443}/tcp >/dev/null 2>&1 || true
     firewall-cmd --permanent --add-port={443,8443}/udp >/dev/null 2>&1 || true
     firewall-cmd --permanent --add-port=40000-50000/udp >/dev/null 2>&1 || true
     firewall-cmd --reload >/dev/null 2>&1 || true
@@ -675,7 +691,7 @@ if command -v ip6tables >/dev/null 2>&1; then
         ip6tables -t nat -C PREROUTING -p udp --dport 40000:50000 -j REDIRECT --to-ports 443 2>/dev/null || \
         ip6tables -t nat -A PREROUTING -p udp --dport 40000:50000 -j REDIRECT --to-ports 443 2>/dev/null || true
     fi
-    for p in 443 8444 8445 8446 18443; do
+    for p in 443 8443 8444 8445 8446 18443; do
         ip6tables -C INPUT -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || \
         ip6tables -I INPUT 1 -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || true
     done

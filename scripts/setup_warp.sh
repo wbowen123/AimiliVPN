@@ -182,8 +182,9 @@ apply_warp_to_singbox() {
         register_warp_account
     fi
 
-    # 建立配置事务备份，防止配置损坏导致 sing-box 假死
-    cp -f "${SINGBOX_CONFIG}" "${SINGBOX_CONFIG}.bak"
+    # 建立独立配置事务备份，防止与其他脚本备份覆盖或配置损坏导致 sing-box 假死
+    WARP_CONFIG_BAK="${SINGBOX_CONFIG}.warp.bak"
+    cp -f "${SINGBOX_CONFIG}" "${WARP_CONFIG_BAK}"
 
     python3 - "${SINGBOX_CONFIG}" "${WARP_JSON}" "${mode}" <<'EOF'
 import sys
@@ -347,25 +348,34 @@ EOF
 
     if [[ -n "$SB_BIN" ]]; then
         if "$SB_BIN" check -c "${SINGBOX_CONFIG}" >/dev/null 2>&1; then
-            rm -f "${SINGBOX_CONFIG}.bak"
-            systemctl restart sing-box.service || true
-            cat > "${DATA_DIR}/warp_mode.json" <<MODE_EOF
+            if systemctl restart sing-box.service >/dev/null 2>&1 && systemctl is-active --quiet sing-box.service 2>/dev/null; then
+                rm -f "${WARP_CONFIG_BAK}"
+                cat > "${DATA_DIR}/warp_mode.json" <<MODE_EOF
 {
   "mode": "${mode}",
   "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 }
 MODE_EOF
-            log_info "Sing-box 规则应用成功，服务已平滑重启！"
+                log_info "Sing-box 规则应用成功，服务运行正常！"
+            else
+                log_warn "Sing-box 重启未能处于 active 状态，正在安全回滚配置..."
+                if [[ -f "${WARP_CONFIG_BAK}" ]]; then
+                    cp -f "${WARP_CONFIG_BAK}" "${SINGBOX_CONFIG}"
+                    rm -f "${WARP_CONFIG_BAK}"
+                    systemctl restart sing-box.service || true
+                fi
+                return 1
+            fi
         else
             log_err "Sing-box 语法检测未通过，配置已安全回滚！"
-            if [[ -f "${SINGBOX_CONFIG}.bak" ]]; then
-                cp -f "${SINGBOX_CONFIG}.bak" "${SINGBOX_CONFIG}"
-                rm -f "${SINGBOX_CONFIG}.bak"
+            if [[ -f "${WARP_CONFIG_BAK}" ]]; then
+                cp -f "${WARP_CONFIG_BAK}" "${SINGBOX_CONFIG}"
+                rm -f "${WARP_CONFIG_BAK}"
             fi
             return 1
         fi
     else
-        log_warn "未探测到 sing-box 二进制，已更新配置文件但保留备份 ${SINGBOX_CONFIG}.bak"
+        log_warn "未探测到 sing-box 二进制，已更新配置文件但保留备份 ${WARP_CONFIG_BAK}"
     fi
 }
 

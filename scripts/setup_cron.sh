@@ -134,30 +134,37 @@ run_watchdog() {
         old_ip=$(cat "${ip_file}" | tr -d '[:space:]')
     fi
 
-    cur_ip=$(curl -s --connect-timeout 4 https://api.ipify.org || true)
+    cur_ip=$(curl -4fsS --connect-timeout 4 --max-time 8 https://api.ipify.org 2>/dev/null || curl -4fsS --connect-timeout 4 --max-time 8 https://ifconfig.me 2>/dev/null || echo "")
     if [[ -n "${cur_ip}" && -n "${old_ip}" && "${cur_ip}" != "${old_ip}" && "${old_ip}" != "您的服务器公网IP" ]]; then
         echo "[${now}] [WATCHDOG] 🔔 检测到 VPS 公网 IP 发生变更: ${old_ip} -> ${cur_ip}，正在自动更新配置与订阅..."
-        echo "${cur_ip}" > "${ip_file}"
+        local update_ok=0
         if [[ -f "${DATA_DIR}/singbox_nodes.json" ]]; then
             python3 -c "
-import json
-p = '${DATA_DIR}/singbox_nodes.json'
+import sys, json
+p = sys.argv[1]
+nip = sys.argv[2]
 try:
     with open(p, 'r', encoding='utf-8') as f: d = json.load(f)
-    d['public_ip'] = '${cur_ip}'
+    d['public_ip'] = nip
     with open(p, 'w', encoding='utf-8') as f: json.dump(d, f, indent=2, ensure_ascii=False)
-except Exception: pass
-" || true
+except Exception:
+    sys.exit(1)
+" "${DATA_DIR}/singbox_nodes.json" "${cur_ip}" 2>/dev/null && update_ok=1 || update_ok=0
         fi
-        if [[ -f "${INSTALL_DIR}/scripts/generate_subs.py" && -f "${DATA_DIR}/singbox_nodes.json" ]]; then
-            python3 "${INSTALL_DIR}/scripts/generate_subs.py" "${DATA_DIR}/singbox_nodes.json" "/var/www/aimilivpn-sub" >> "${MAINT_LOG}" 2>&1 || true
-            if [[ -d "/var/lib/aimilivpn/subscriptions" ]]; then
-                cp -f /var/www/aimilivpn-sub/* /var/lib/aimilivpn/subscriptions/ 2>/dev/null || true
+
+        if [[ "$update_ok" == "1" && -f "${INSTALL_DIR}/scripts/generate_subs.py" ]]; then
+            if python3 "${INSTALL_DIR}/scripts/generate_subs.py" "${DATA_DIR}/singbox_nodes.json" "/var/www/aimilivpn-sub" >> "${MAINT_LOG}" 2>&1; then
+                if [[ -d "/var/lib/aimilivpn/subscriptions" ]]; then
+                    cp -f /var/www/aimilivpn-sub/* /var/lib/aimilivpn/subscriptions/ 2>/dev/null || true
+                fi
+                echo "${cur_ip}" > "${ip_file}"
+                if [[ -f "${INSTALL_DIR}/scripts/tg_bot.sh" ]]; then
+                    bash "${INSTALL_DIR}/scripts/tg_bot.sh" alert "VPS 公网 IP 变动" "检测到服务器 IP 从 ${old_ip} 变更至 ${cur_ip}，已自动更新全部协议订阅配置！" || true
+                    bash "${INSTALL_DIR}/scripts/tg_bot.sh" sub || true
+                fi
+            else
+                echo "[${now}] [WATCHDOG] ⚠️ 订阅生成失败，保留旧 IP 标记以便下个周期重试" >> "${MAINT_LOG}"
             fi
-        fi
-        if [[ -f "${INSTALL_DIR}/scripts/tg_bot.sh" ]]; then
-            bash "${INSTALL_DIR}/scripts/tg_bot.sh" alert "VPS 公网 IP 变动" "检测到服务器 IP 从 ${old_ip} 变更至 ${cur_ip}，已自动更新全部协议订阅配置！" || true
-            bash "${INSTALL_DIR}/scripts/tg_bot.sh" sub || true
         fi
     fi
 }

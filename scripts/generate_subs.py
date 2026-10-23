@@ -65,6 +65,7 @@ def generate_subscriptions(nodes_data, output_dir):
                 cdn_host = cand_cdn
             except Exception:
                 cdn_host = ""
+                print(f"  [!] 提示: 检测到域名 {domain}，但 {cand_cdn} 尚未配置 DNS 解析，跳过 CDN 节点生成（如需 CDN 节点，请在 Cloudflare 添加 {cand_cdn} 解析并开启小黄云）。")
 
     host = direct_host if direct_host else public_ip
     camouflage_sni = nodes_data.get("camouflage_domain", "gateway.icloud.com")
@@ -200,10 +201,11 @@ def generate_subscriptions(nodes_data, output_dir):
         "sni": tuic_sni, "skip-cert-verify": bool(not domain)
     })
 
-    # A4. AnyTLS IPv4
-    anytls_d_v4 = f"anytls://{direct_uuid}@{public_ip}:{anytls_port}?sni={tuic_sni}&insecure={insec_flag}#{urllib.parse.quote(node_names['anytls_direct_v4'])}"
-    anytls_r_v4 = f"anytls://{resi_uuid}@{public_ip}:{anytls_port}?sni={tuic_sni}&insecure={insec_flag}#{urllib.parse.quote(node_names['anytls_resi_v4'])}"
-    links.extend([anytls_d_v4, anytls_r_v4])
+    # A4. AnyTLS IPv4 (仅在服务端开启 AnyTLS 监听时生成)
+    if anytls_port and int(anytls_port) > 0:
+        anytls_d_v4 = f"anytls://{direct_uuid}@{public_ip}:{anytls_port}?sni={tuic_sni}&insecure={insec_flag}#{urllib.parse.quote(node_names['anytls_direct_v4'])}"
+        anytls_r_v4 = f"anytls://{resi_uuid}@{public_ip}:{anytls_port}?sni={tuic_sni}&insecure={insec_flag}#{urllib.parse.quote(node_names['anytls_resi_v4'])}"
+        links.extend([anytls_d_v4, anytls_r_v4])
 
     # A5. VMess xHTTP IPv4 (直连 8445 明文传输，由 VMess AEAD 内部加密)
     vmess_obj_d_v4 = {
@@ -355,6 +357,14 @@ def generate_subscriptions(nodes_data, output_dir):
 
     with open(os.path.join(output_dir, "nodes.txt"), "w", encoding="utf-8") as f:
         f.write(raw_sub_text)
+
+    # 同步写入一份 nodes.txt 到 data_dir 便于本地 CLI 与脚本直接消费
+    if os.path.isdir(data_dir_path) and os.path.abspath(data_dir_path) != os.path.abspath(output_dir):
+        try:
+            with open(os.path.join(data_dir_path, "nodes.txt"), "w", encoding="utf-8") as f:
+                f.write(raw_sub_text)
+        except Exception:
+            pass
 
     # --------------------------------------------------------------------------
     # 3. 输出 Clash Meta / Mihomo 格式订阅 (clash.yaml)
@@ -559,15 +569,16 @@ def generate_subscriptions(nodes_data, output_dir):
         "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": bool(not domain)}
     })
 
-    # AnyTLS
-    sb_outbounds_list.append({
-        "type": "anytls", "tag": node_names["anytls_direct_v4"], "server": public_ip, "server_port": anytls_port,
-        "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
-    })
-    sb_outbounds_list.append({
-        "type": "anytls", "tag": node_names["anytls_resi_v4"], "server": public_ip, "server_port": anytls_port,
-        "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
-    })
+    # AnyTLS (仅在服务端开启 AnyTLS 监听时生成)
+    if anytls_port and int(anytls_port) > 0:
+        sb_outbounds_list.append({
+            "type": "anytls", "tag": node_names["anytls_direct_v4"], "server": public_ip, "server_port": anytls_port,
+            "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+        })
+        sb_outbounds_list.append({
+            "type": "anytls", "tag": node_names["anytls_resi_v4"], "server": public_ip, "server_port": anytls_port,
+            "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+        })
 
     # VMess (直连 8445 明文传输，由 VMess AEAD 内部加密)
     sb_outbounds_list.append({

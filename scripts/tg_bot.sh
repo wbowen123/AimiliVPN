@@ -187,7 +187,7 @@ import sys, json, os
 
 data_dir = sys.argv[1]
 nodes_file = os.path.join(data_dir, 'singbox_nodes.json')
-links_file = os.path.join(data_dir, 'singbox_links.txt')
+links_file = os.path.join(data_dir, 'nodes.txt')
 sub_dir = '/var/www/aimilivpn-sub'
 
 domain = ''
@@ -224,12 +224,15 @@ lines = [
 ]
 
 nodes = []
-if os.path.exists(os.path.join(sub_dir, 'nodes.txt')):
-    with open(os.path.join(sub_dir, 'nodes.txt'), encoding='utf-8') as f:
-        nodes = [l.strip() for l in f if l.strip() and not l.startswith('#')]
-elif os.path.exists(links_file):
-    with open(links_file, encoding='utf-8') as f:
-        nodes = [l.strip() for l in f if l.strip() and not l.startswith('#')]
+for p in [os.path.join(sub_dir, 'nodes.txt'), os.path.join(data_dir, 'nodes.txt'), os.path.join(data_dir, 'singbox_links.txt')]:
+    if os.path.exists(p):
+        try:
+            with open(p, encoding='utf-8') as f:
+                nodes = [l.strip() for l in f if l.strip() and not l.startswith('#')]
+            if nodes:
+                break
+        except Exception:
+            pass
 
 if nodes:
     lines.append(f'📋 <b>已激活节点数:</b> {len(nodes)} 个')

@@ -119,7 +119,7 @@ fi
 
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
     echo -e "  * UFW 防火墙状态: ${YELLOW}已启用 (Active)${PLAIN}"
-    for p in 443 8443 8444 8445 18443; do
+    for p in 443 8443 8444 8445 8446 18443; do
         if ufw status 2>/dev/null | grep -qE "^${p}\b.*ALLOW"; then
             echo -e "    - 端口 ${p}: ${GREEN}ALLOW${PLAIN}"
         else
@@ -133,11 +133,19 @@ fi
 # ------------------------------------------------------------------------------
 echo -e "\n${BOLD}【4. 住宅出口网桥 (127.0.0.1:8500) 真实代理测试】${PLAIN}"
 
+PROXY_ENV_FILE="/etc/default/aimilivpn"
+SOCKS_USER="socks5"
+SOCKS_PASS="ilovestudy"
+if [ -f "$PROXY_ENV_FILE" ]; then
+    SOCKS_USER=$(grep '^LOCAL_PROXY_USER=' "$PROXY_ENV_FILE" | cut -d'=' -f2 | tr -d '"'"' " || echo "socks5")
+    SOCKS_PASS=$(grep '^LOCAL_PROXY_PASS=' "$PROXY_ENV_FILE" | cut -d'=' -f2 | tr -d '"'"' " || echo "ilovestudy")
+fi
+
 RESI_IP_RES=""
 RESI_TIME=0
 START_TS=$(date +%s%N 2>/dev/null || date +%s)
-RESI_IP_RES=$(curl -s4 --connect-timeout 5 --max-time 8 --socks5-hostname socks5:ilovestudy@127.0.0.1:8500 https://api.ipify.org 2>/dev/null || \
-              curl -s4 --connect-timeout 5 --max-time 8 --socks5-hostname 127.0.0.1:8500 https://api.ipify.org 2>/dev/null || echo "")
+RESI_IP_RES=$(curl -s4 --connect-timeout 5 --max-time 8 --proxy "socks5h://${SOCKS_USER}:${SOCKS_PASS}@127.0.0.1:8500" https://api.ipify.org 2>/dev/null || \
+              curl -s4 --connect-timeout 5 --max-time 8 --proxy "socks5h://127.0.0.1:8500" https://api.ipify.org 2>/dev/null || echo "")
 END_TS=$(date +%s%N 2>/dev/null || date +%s)
 
 if [ -n "$RESI_IP_RES" ]; then
@@ -203,7 +211,7 @@ echo -e "  ${BOLD}2. 全部 10 个节点全部显示 -1（直连和住宅全都�
 echo -e "     -> 根因 1【最常见】：${RED}云服务器厂商外层安全组（云防火墙）没有放行 443 端口！${PLAIN}"
 echo -e "        AWS Lightsail、Oracle Cloud (甲骨文)、阿里云、腾讯云、Google Cloud 默认在控制台拦截入站流量。"
 echo -e "        ${GREEN}解决办法：请前往云服务商控制台 -> 实例安全组 / 防火墙 -> 添加允许规则：${PLAIN}"
-echo -e "        - TCP 端口: ${YELLOW}443, 8444, 8445, 18443${PLAIN}"
+echo -e "        - TCP 端口: ${YELLOW}443, 8443, 8444, 8445, 8446, 18443${PLAIN}"
 echo -e "        - UDP 端口: ${YELLOW}443, 8443, 40000-50000${PLAIN}"
 echo -e "     -> 根因 2：本地系统时间与网络标准时间严重偏差（大于 60 秒）导致 Reality 握手被拒。"
 echo -e "        ${GREEN}解决办法：运行 ${YELLOW}bash /opt/aimilivpn/scripts/check_time_sync.sh${PLAIN} 自动对时。"
@@ -217,3 +225,9 @@ echo -e "     -> 根因：部分旧版 Clash 客户端不支持 Salamander 混�
 echo -e "     -> 解决：优先选用原生极速 VLESS-Reality 节点，或升级客户端到最新 Mihomo 内核。"
 echo
 echo -e "${BOLD}${BLUE}======================================================================${PLAIN}\n"
+
+# 7. 返回整体健康码 (Sing-box 或 Nginx 核心故障时返回 1，供监控与自动化流水线判定)
+if [ "${S_SINGBOX:-0}" -ne 0 ] || [ "${S_NGINX:-0}" -ne 0 ]; then
+    exit 1
+fi
+exit 0
