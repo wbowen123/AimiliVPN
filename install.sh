@@ -1501,6 +1501,12 @@ if [ "${INSTALL_SINGBOX:-}" = "y" ] || [ "${INSTALL_SINGBOX:-}" = "Y" ]; then
             bash "${INSTALL_DIR}/scripts/cf_speedtest.sh" test || true
         fi
     fi
+
+    # 执行 Cloudflare Argo 固定穿透隧道部署 (若用户填写了 Token)
+    if [ -n "${ARGO_TUNNEL_TOKEN:-}" ] && [ -f "${INSTALL_DIR}/scripts/setup_argo.sh" ]; then
+        echo -e "\n${YELLOW}开始配置与启动 Cloudflare Argo 固定穿透隧道...${PLAIN}"
+        bash "${INSTALL_DIR}/scripts/setup_argo.sh" token "${ARGO_TUNNEL_TOKEN}" "${ARGO_TUNNEL_DOMAIN:-}" "${ARGO_TUNNEL_PORT:-8445}" || true
+    fi
 elif [ "${INSTALL_JIUHEYI:-}" = "y" ] || [ "${INSTALL_JIUHEYI:-}" = "Y" ]; then
     if [ -f /etc/v2ray-agent/xray/xray ] || [ -f /etc/v2ray-agent/sing-box/sing-box ]; then
         echo -e "${YELLOW}九合一已安装，跳过。${PLAIN}"
