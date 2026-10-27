@@ -235,7 +235,35 @@ fi
 [ -z "$DIRECT_UUID" ] && DIRECT_UUID=$("$SB_BIN" generate uuid)
 [ -z "$RESI_UUID" ] && RESI_UUID=$("$SB_BIN" generate uuid)
 [ -z "$SHORT_ID" ] && SHORT_ID=$("$SB_BIN" generate rand --hex 8)
-[ -z "$HY2_OBFS" ] && HY2_OBFS=$("$SB_BIN" generate rand --hex 12)
+
+# --------------------------------------------------------------------------
+# Hysteria 2 混淆(Salamander) 与 伪装(HTTP/3 Masquerade) 优雅二选一分流：
+# 规范：Salamander 破坏 QUIC 头部导致 masquerade 永远无法生效（二者底层协议互斥）。
+# 模式 A: 标准 HTTP/3 伪装站模式 (默认推荐, HY2_OBFS="") -> 伪装至 CAMOUFLAGE_DOMAIN，兼容全客户端并抗探测。
+# 模式 B: Salamander 强混淆模式 (HY2_ENABLE_OBFS=1 或 HY2_OBFS_MODE=obfs) -> 随机密码，打乱 UDP 特征抗极端 QoS。
+# --------------------------------------------------------------------------
+if [ "${HY2_ENABLE_OBFS:-}" = "1" ] || [ "${HY2_OBFS_MODE:-}" = "obfs" ]; then
+    [ -z "$HY2_OBFS" ] && HY2_OBFS=$("$SB_BIN" generate rand --hex 12)
+elif [ "${HY2_ENABLE_OBFS:-}" = "0" ] || [ "${HY2_OBFS_MODE:-}" = "masquerade" ]; then
+    HY2_OBFS=""
+fi
+
+if [ -n "$HY2_OBFS" ] && [ "$HY2_OBFS" != "none" ]; then
+    HY2_PROTECT_BLOCK=$(cat <<EOF
+      "obfs": {
+        "type": "salamander",
+        "password": "${HY2_OBFS}"
+      },
+EOF
+)
+    echo -e "${YELLOW}  * Hysteria 2 防护模式: [Salamander 强混淆] (密码: ${HY2_OBFS}，抗晚高峰 QoS，伪装站依规关闭)${PLAIN}"
+else
+    HY2_PROTECT_BLOCK=$(cat <<EOF
+      "masquerade": "https://${CAMOUFLAGE_DOMAIN}",
+EOF
+)
+    echo -e "${GREEN}  * Hysteria 2 防护模式: [标准 HTTP/3 伪装站] (反代至 ${CAMOUFLAGE_DOMAIN}，抗嗅探、全平台通用兼容)${PLAIN}"
+fi
 
 cat > "$KEYS_STORE" <<EOF
 {
@@ -315,11 +343,7 @@ cat > "$SB_CONFIG_TMP" <<EOF
           "password": "${RESI_UUID}"
         }
       ],
-      "obfs": {
-        "type": "salamander",
-        "password": "${HY2_OBFS}"
-      },
-      "masquerade": "https://${CAMOUFLAGE_DOMAIN}",
+${HY2_PROTECT_BLOCK}
       "tls": {
         "enabled": true,
         "certificate_path": "${CERT_FILE}",
@@ -480,6 +504,7 @@ cfg['inbounds'] = [ib for ib in cfg['inbounds'] if ib.get('type') != 'anytls']
 for ib in cfg['inbounds']:
     if ib.get('type') == 'hysteria2' and 'obfs' in ib:
         del ib['obfs']
+        ib['masquerade'] = 'https://$CAMOUFLAGE_DOMAIN'
 with open('$SB_CONFIG_TMP', 'w') as f:
     json.dump(cfg, f, indent=2)
 "

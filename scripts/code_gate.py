@@ -534,13 +534,12 @@ def check_singbox_binary_validation():
                             f_c.write("-----BEGIN CERTIFICATE-----\nMIICtDCCAZygAwIBAgIUTDQj+Vp9UqZd7eUUNoLiiqKvd8EwDQYJKoZIhvcNAQEL\nBQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTI2MTAyMzE0MzYwNVoXDTI3MTAy\nMzE0MzYwNVowFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEF\nAAOCAQ8AMIIBCgKCAQEA3DxUT9xDAJP76Jhim4zzPg8E3na8wpi8WnajFRLCVR4a\nYVsP6ApztFPZC/YraVDGu/TRHpz4b0IjMvqMSN5SAXFangP4d5nubEvu8YSG8tM9\npmtRuriXx+AZGkvdMB4NvTPow948CsnhbLZS8ObRQoJyZm69/yfp3oI67plJ1/5i\nZPA/C7jVb6fV5a2coGSWjak6JfYw1pbYhSqM36J0C5eyLimmYWXmTduwaSx6pQl+\nCO+HPNfudZXMVGsfv8lf+YSHHsLMJPobUJwEIBkLjJBM5nVjeP66AObqCoXJk+D5\nKmZr94SyweYpWXBtWnXoFHC6tUokpK0gjPAAFVrO7QIDAQABMA0GCSqGSIb3DQEB\nCwUAA4IBAQByXm44m8iZurYhS303FsVQvdkWK3e42FI5u7UIe2ra0sprLLIMDyfD\ncepnZf06WqpO1cYzHYlMUQITO6gkVPcTTspEhqa6bwCnDquSgHZgw8+PqYb3xXZN\nNQ6rKuOwJzfYgV157Dmfyu5/HNPD8S0ABCddRjmC5R//HKRW4PvTTXj9uXfTqHxr\nvZEgBgr0bzTvk7frkCx4j1w3DFdOnQj/cE492KJ1dL5ebdwso/geKQKJ3vqiyW5M\nZ5TG0pIoXHvn7rnrln48WsSkn/p8RsdRk3b2JgTbIQwCEM7MOUK2KKNIe7f6aELw\nGbMczhLFy8K7E4Arde8cBDA9nad2nWPK\n-----END CERTIFICATE-----")
                         with open(key_path, "w", encoding="utf-8") as f_k:
                             f_k.write("-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA3DxUT9xDAJP76Jhim4zzPg8E3na8wpi8WnajFRLCVR4aYVsP\n6ApztFPZC/YraVDGu/TRHpz4b0IjMvqMSN5SAXFangP4d5nubEvu8YSG8tM9pmtR\nuriXx+AZGkvdMB4NvTPow948CsnhbLZS8ObRQoJyZm69/yfp3oI67plJ1/5iZPA/\nC7jVb6fV5a2coGSWjak6JfYw1pbYhSqM36J0C5eyLimmYWXmTduwaSx6pQl+CO+H\nPNfudZXMVGsfv8lf+YSHHsLMJPobUJwEIBkLjJBM5nVjeP66AObqCoXJk+D5KmZr\n94SyweYpWXBtWnXoFHC6tUokpK0gjPAAFVrO7QIDAQABAoIBAAmFd4UBr3PgR00a\n/shdePap4jqr73qKQo+2qVOekqrouO3p6Jojjt+w8E/wE0MOVvPb9bPZHXR8liun\nYVaVJf53TsTzbv6HYni+ylRut6wv2G56x/cb8T6W6v7pYLqqfKA9akbC3jL+igcP\n1YN3YdH6ScUxQc2SMC41Jc8YRB+uWd018VboHGSpBzMRPyTq1kKMCnwFmXiiztIw\ncivbnsgFdJ15GK3iBqE82f2+rN7Z/v/OAno32fGqtuPEt81LoWkVgfZVeQMUos3X\ndNtzQbDkwcVt1toCqSbhpSmsdJ3tswKIzLmcQQhBf09h4bd8tlTb4b9Qgp06sfbn\nU9dbPxECgYEA/S0RssL7V7Rr3ioHonagaOYI3tG6KiC2Sbauvtxv3UZQodpHwWaE\n0sua7wsSX1C6XMO1fGmsaWktu0ewxQQ/gDDEFEa84pUtFySqVy1i5H3u+55k9E4F\nb1Gksrlo2oCQfXRU3G6M5nhcIQNZezErg7ORX9qdnHEMvCHKwsGUMmsCgYEA3rEz\nXqtlIQUTJA67lSI9Fa0zeoZ2j3vI/qI3dyAwix4LAw1feKYQfstOE6fFDyTyM0x7\n+XTfP0d/ghFXXc2pEo7nNLIBZMDNz01Z4TXsgI2gO8K9CxIFLG14TapbIXUrDXWi\nUBH5m3Na2OlwHYcJxqkyH6fAefMOdGrJrMLPygcCgYBQNKj4suChZl0N4s7MXzxu\nPwHsZRDPK9HUBHXTrU4bEZ2VyOsWj/3gMfSBakaFv7Nqk+243llqg5GjVRDhOXlM\niSZ1LfvE5HGGdW0pdQ1xSZweRo3A/76lB35fyHE5V6VuuR3xP2yPzu2Q39jHOEqK\nzKZvcXihCQd5ylLL5DuoxQKBgAEJUBTjtU/HB0TGsMbL5v7f1HqAf7LBP7k3pgxu\n4Or009ZKzKPyGeeNKKrcwAUHBf2JIJaTnapcudIwJHjySRQmCBttrKX8Y7jQQlfS\n+WvLvPAqQtj3V4DSbZnm7g+kzPN+FahLvR6lFcomo/fvNfNvvCT7keC/adTO3mto\naLEnAoGBAI6389VswUDhGhoX+H+PlNuBRkol4GRHIrgkznsVoyqhmi1KtWOXCPUm\n9Mvshlkx/FdY9X52u7xBS9ZD97mhTD67U1PV6AZt7/lfDiUUnUmjQ9wRb+XKHo+2\nVAkCGg/t/wpd8SFbj5ZNGfPiTRbrcNdnXGIY080BuB5Wsuza12zf\n-----END RSA PRIVATE KEY-----")
-                        subs_server = {
+                        subs_server_base = {
                             "${DIRECT_UUID}": "11111111-1111-1111-1111-111111111111",
                             "${RESI_UUID}": "22222222-2222-2222-2222-222222222222",
                             "${CAMOUFLAGE_DOMAIN}": "gateway.icloud.com",
                             "${PRIVATE_KEY}": "gKgD-XCLpFvAyqHtw5XgJyCeDIjIIL-EuLo4lYtQ_kc",
                             "${SHORT_ID}": "0123456789abcdef",
-                            "${HY2_OBFS}": "testpass",
                             "${CERT_FILE}": cert_path,
                             "${KEY_FILE}": key_path,
                             "${RESI_PROXY_HOST}": "127.0.0.1",
@@ -548,21 +547,41 @@ def check_singbox_binary_validation():
                             "${RESI_PROXY_USER}": "socks5",
                             "${RESI_PROXY_PASS}": "ilovestudy"
                         }
-                        rendered_sb = tmpl_sb
-                        for k, v in subs_server.items():
-                            rendered_sb = rendered_sb.replace(k, str(v))
                         
-                        server_json = os.path.join(tmpdir, "server.json")
-                        with open(server_json, "w", encoding="utf-8") as f_out:
-                            f_out.write(rendered_sb)
+                        # ------------------------------------------------------
+                        # 敌对审计：验证 Hysteria 2 混淆与伪装优雅分流 (二选一互斥断言)
+                        # ------------------------------------------------------
+                        hy2_test_modes = {
+                            "obfs_mode": '"obfs": {"type": "salamander", "password": "testpassword"},',
+                            "masquerade_mode": '"masquerade": "https://gateway.icloud.com",'
+                        }
                         
-                        # 先行 JSON 语法解析验证
-                        json.loads(rendered_sb)
-                        
-                        if sb_bin:
-                            res_s = subprocess.run([sb_bin, "check", "-c", server_json], capture_output=True, text=True)
-                            if res_s.returncode != 0:
-                                report_error(setup_sh, None, f"sing-box 内核校验服务端配置模板失败：{res_s.stderr.strip()}", "P0-SB-CHECK-SERVER")
+                        for mode_name, hy2_block in hy2_test_modes.items():
+                            rendered_sb = tmpl_sb.replace("${HY2_PROTECT_BLOCK}", hy2_block)
+                            for k, v in subs_server_base.items():
+                                rendered_sb = rendered_sb.replace(k, str(v))
+                            
+                            server_json = os.path.join(tmpdir, f"server_{mode_name}.json")
+                            with open(server_json, "w", encoding="utf-8") as f_out:
+                                f_out.write(rendered_sb)
+                            
+                            # 先行 JSON 语法解析验证
+                            cfg_dict = json.loads(rendered_sb)
+                            
+                            # 互斥性与防御审计：寻找 hy2 入站
+                            for ib in cfg_dict.get("inbounds", []):
+                                if ib.get("type") == "hysteria2":
+                                    has_obfs = "obfs" in ib
+                                    has_masq = "masquerade" in ib
+                                    if has_obfs and has_masq:
+                                        report_error(setup_sh, None, "Hysteria 2 入站同时配置了 obfs 混淆与 masquerade 伪装，违背底层协议互斥原则！", "P0-HY2-MUTEX")
+                                    if not has_obfs and not has_masq:
+                                        report_error(setup_sh, None, "Hysteria 2 入站既未配置 obfs 混淆，也未配置 masquerade 伪装，处于裸奔状态！", "P0-HY2-EMPTY-PROTECT")
+                            
+                            if sb_bin:
+                                res_s = subprocess.run([sb_bin, "check", "-c", server_json], capture_output=True, text=True)
+                                if res_s.returncode != 0:
+                                    report_error(setup_sh, None, f"sing-box 内核校验服务端配置模板 ({mode_name}) 失败：{res_s.stderr.strip()}", "P0-SB-CHECK-SERVER")
             except Exception as e:
                 report_error(setup_sh, None, f"setup_singbox.sh 服务端模板校验异常: {e}", "P0-SB-SERVER-JSON")
 

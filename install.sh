@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-if [ ! -t 0 ] && [ -e /dev/tty ]; then
-    exec < /dev/tty
+if [ ! -t 0 ] && [ -z "${AIMILI_YES:-}" ] && [ -z "${1:-}" ] && [ -c /dev/tty ]; then
+    exec < /dev/tty 2>/dev/null || true
 fi
 
 RED='\033[0;31m'
@@ -359,11 +359,13 @@ aimili_uninstall() {
         AIMILI_VPN_SVCS="${AIMILI_VPN_SVCS} ${vp}"
     done
     # AimiliVPN 自己的 acme 与维护任务删掉；证书缓存 /var/lib/aimilivpn-acme 保留，重装直接装、不重签
-    rm -f /etc/cron.d/aimilivpn-acme /etc/cron.d/aimilivpn-maintenance /var/log/aimilivpn-maintenance.log /var/log/cloudflared-argo.log /run/lock/aimilivpn-cert.lock
+    rm -f /etc/cron.d/aimilivpn-acme /etc/cron.d/aimilivpn-maintenance /var/log/aimilivpn-maintenance.log /var/log/cloudflared-argo.log /var/log/sing-box.log /var/log/aimilivpn.log /run/lock/aimilivpn-cert.lock
     rm -rf /etc/systemd/system/aimilivpn.service.d /etc/systemd/system/cloudflared-argo.service /etc/systemd/system/aimilivpn-tgbot.service \
-        /opt/aimilivpn /etc/aimilivpn /var/www/aimilivpn-acme /var/www/aimilivpn-sub /var/www/camouflage \
-        /etc/sing-box /etc/systemd/system/sing-box.service /usr/local/bin/sing-box
-    iptables -t nat -D PREROUTING -p udp --dport 40000:50000 -j REDIRECT --to-ports 443 2>/dev/null || true
+        /opt/aimilivpn /etc/aimilivpn /var/lib/aimilivpn /var/www/aimilivpn-acme /var/www/aimilivpn-sub /var/www/camouflage \
+        /etc/sing-box /etc/systemd/system/sing-box.service /usr/local/bin/sing-box /tmp/aimilivpn*
+    while iptables -t nat -D PREROUTING -p udp --dport 40000:50000 -j REDIRECT --to-ports 443 2>/dev/null; do :; done
+    while ip6tables -t nat -D PREROUTING -p udp --dport 40000:50000 -j REDIRECT --to-ports 443 2>/dev/null; do :; done
+    if command -v netfilter-persistent >/dev/null 2>&1; then netfilter-persistent save >/dev/null 2>&1 || true; fi
     if command -v nft >/dev/null 2>&1; then nft delete table ip aimilivpn 2>/dev/null || true; fi
     systemctl daemon-reload >/dev/null 2>&1
     # 只删 AimiliVPN 自己的 nginx 站点（8443 管理入口 + ACME webroot），九合一的 nginx 配置不动。
@@ -412,11 +414,14 @@ aimili_uninstall() {
     r=0; [ -e /etc/systemd/system/aimilivpn-github-update.timer ] && r=1; aimili_chk "自动更新定时器" "$r"
     r=0; [ -e /opt/aimilivpn ] && r=1; aimili_chk "程序目录 /opt/aimilivpn" "$r"
     r=0; [ -e /etc/aimilivpn ] && r=1; aimili_chk "证书与配置目录 /etc/aimilivpn" "$r"
+    r=0; [ -e /var/lib/aimilivpn ] && r=1; aimili_chk "运行状态目录 /var/lib/aimilivpn" "$r"
+    r=0; [ -e /etc/sing-box ] && r=1; aimili_chk "Sing-box 核心配置目录 /etc/sing-box" "$r"
     r=0; { [ -e /etc/nginx/conf.d/aimilivpn-production.conf ] || [ -e /etc/nginx/conf.d/aimilivpn-acme.conf ] || [ "${nginx_ok}" != "1" ]; } && r=1
     aimili_chk "nginx 站点 8443 管理入口/ACME（已删除并 reload，九合一配置未动）" "$r"
     r=0; ss -ltnH 2>/dev/null | awk '{print $4}' | grep -Eq '(^|:)8443$' && r=1; aimili_chk "8443 端口已释放" "$r"
     r=0; [ -e /usr/bin/ml ] && r=1; aimili_chk "ml 命令 /usr/bin/ml" "$r"
     r=0; { iptables -S INPUT 2>/dev/null; ip6tables -S INPUT 2>/dev/null; } | grep -q -- '--comment aimilivpn' && r=1; aimili_chk "防火墙里为 AimiliVPN 放行的端口规则" "$r"
+    r=0; { iptables -t nat -S PREROUTING 2>/dev/null; ip6tables -t nat -S PREROUTING 2>/dev/null; } | grep -q '40000:50000' && r=1; aimili_chk "Hysteria 2 端口跳跃转发规则" "$r"
     r=0; [ -e /etc/cron.d/aimilivpn-acme ] && r=1; aimili_chk "AimiliVPN 证书续期任务" "$r"
     r=0; [ -e /var/lib/aimilivpn-swapfile ] && r=1; aimili_chk "AimiliVPN 交换文件" "$r"
     r=0; ls /sys/class/net 2>/dev/null | grep -Eq '^(tun0|tun-sw-|tun-sb|tun-hot|vpn_|alh)' && r=1; aimili_chk "VPN 网卡/路由规则" "$r"
@@ -452,6 +457,19 @@ INSTALL_BBR="y"
 SINGBOX_CAMOUFLAGE="${SINGBOX_CAMOUFLAGE:-}"
 INSTALL_JIUHEYI="n"
 
+if [ -n "${1:-}" ]; then
+    case "$1" in
+        uninstall|remove|8) AIMILI_ACTION="uninstall" ;;
+        1) AIMILI_ACTION="install"; INSTALL_SINGBOX=y; INSTALL_RESI=y; INSTALL_WARP=auto; INSTALL_SUB=y; INSTALL_CAMO=y; INSTALL_BBR=y ;;
+        2) AIMILI_ACTION="install"; INSTALL_SINGBOX=y; INSTALL_RESI=n; INSTALL_WARP=n; INSTALL_SUB=y; INSTALL_CAMO=y; INSTALL_BBR=y ;;
+        3) AIMILI_ACTION="install"; INSTALL_SINGBOX=n; INSTALL_RESI=y; INSTALL_WARP=n; INSTALL_SUB=n; INSTALL_CAMO=n; INSTALL_BBR=y ;;
+        4) AIMILI_ACTION="install"; INSTALL_SINGBOX=y; INSTALL_RESI=n; INSTALL_WARP=auto; INSTALL_SUB=y; INSTALL_CAMO=y; INSTALL_BBR=y ;;
+        5) AIMILI_ACTION="install"; INSTALL_SINGBOX=y; INSTALL_RESI=y; INSTALL_WARP=n; INSTALL_SUB=y; INSTALL_CAMO=y; INSTALL_BBR=y ;;
+        6) AIMILI_ACTION="install"; INSTALL_SINGBOX=n; INSTALL_RESI=n; INSTALL_WARP=n; INSTALL_SUB=y; INSTALL_CAMO=y; INSTALL_BBR=n ;;
+        install) AIMILI_ACTION="install" ;;
+    esac
+fi
+
 if [ -z "${AIMILI_ACTION}" ] && [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -t 0 ]; then
     echo -e "${BLUE}======================================================================${PLAIN}"
     echo -e "${BOLD}${BLUE}       🛡️ AimiliVPN 模块化架构一键部署向导 - 请选择安装组合模式${PLAIN}"
@@ -486,10 +504,17 @@ if [ -z "${AIMILI_ACTION}" ] && [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -t 0 
     echo -e "      ${BOLD}说明:${PLAIN} 仅部署多客户端订阅转换托管服务与 HTTPS 控制台，便于集中托管与分发现有节点。"
     echo ""
     echo -e "  ${BOLD}${GREEN}[7] 🛠️【自定义模块高级自由勾选】(交互式按需挑选各个子组件)${PLAIN}"
-    echo -e "      ${BOLD}说明:${PLAIN} 自由选择: ①原生直连五协议 ②Aimili住宅家宽 ③自适应WARP ④伪装站 ⑤BBR优化。"
+    echo -e "      ${BOLD}包含:${PLAIN} 自由选择: ①原生直连五协议 ②Aimili住宅家宽 ③自适应WARP ④伪装站 ⑤BBR优化 ⑥Hysteria2防护模式"
+    echo -e "      ${BOLD}说明:${PLAIN} 满足极客深度定制需求，自由组合出站网络、流媒体解锁引擎与传输防嗅探策略。"
+    echo -e "      ${BOLD}建议:${PLAIN} 适合对网络拓扑有特定需求或需要针对性调优的高级用户。"
     echo ""
-    echo -e "  ${BOLD}${RED}[8] 🗑️【完全卸载 AimiliVPN 及所有关联组件】${PLAIN}"
+    echo -e "  ${BOLD}${RED}[8] 🗑️【完全卸载 AimiliVPN 及所有关联组件】(深度清理)${PLAIN}"
+    echo -e "      ${BOLD}包含:${PLAIN} 停止并清理全部关联 systemd 服务、内核网桥、iptables 端口跳跃规则、Nginx 管理站点与程序目录"
+    echo -e "      ${BOLD}说明:${PLAIN} 彻底清理 AimiliVPN 的所有进程、配置、日志及端口映射，严格保留九合一与系统原有业务。"
+    echo -e "      ${BOLD}建议:${PLAIN} 欲彻底重置网络或需要净空 VPS 环境时选择此项。"
+    echo ""
     echo -e "  ${BOLD}[0] 🚪【退出安装程序】${PLAIN}"
+    echo -e "      ${BOLD}说明:${PLAIN} 不执行任何安装或改动，安全退出当前向导脚本。"
     echo -e "${BLUE}======================================================================${PLAIN}"
 
     read -r -p "请选择安装模式 [0-8，回车默认为 1 全套旗舰版]: " _mode_choice
@@ -538,6 +563,15 @@ if [ -z "${AIMILI_ACTION}" ] && [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -t 0 
 
             read -r -p "6. 是否开启 Linux 原生 BBR 内核拥塞优化？(Y/n): " _c_bbr
             case "${_c_bbr:-y}" in n|N) INSTALL_BBR=n ;; *) INSTALL_BBR=y ;; esac
+
+            echo -e "\n  ${BOLD}7. Hysteria 2 防护模式二选一:${PLAIN}"
+            echo -e "     [1] 🌟 标准 HTTP/3 伪装站 (默认推荐: 伪装为真实网页, 抗嗅探, 全平台客户端无缝兼容)"
+            echo -e "     [2] 🌪️ Salamander 强混淆 (适合晚高峰 QUIC 被运营商深度 QoS 掐断的恶劣网络, 伪装站自动关闭)"
+            read -r -p "     请选择 Hysteria 2 防护模式 [1-2，回车默认为 1]: " _c_hy2_mode
+            case "${_c_hy2_mode:-1}" in
+                2) export HY2_OBFS_MODE="obfs"; export HY2_ENABLE_OBFS="1" ;;
+                *) export HY2_OBFS_MODE="masquerade"; export HY2_ENABLE_OBFS="0" ;;
+            esac
             ;;
         8)
             AIMILI_ACTION=uninstall
@@ -709,8 +743,16 @@ fi
 DEFAULT_USER="wbowen123"
 DEFAULT_REPO="AimiliVPN"
 
-GITHUB_USER="${1:-${DEFAULT_USER}}"
-GITHUB_REPO="${2:-${DEFAULT_REPO}}"
+# 若 $1 是操作模式参数 (1-8, install, uninstall)，则不作为 GitHub 用户名
+case "${1:-}" in
+    1|2|3|4|5|6|7|8|uninstall|remove|install|"")
+        GITHUB_USER="${GITHUB_USER:-${DEFAULT_USER}}"
+        ;;
+    *)
+        GITHUB_USER="${1:-${DEFAULT_USER}}"
+        ;;
+esac
+GITHUB_REPO="${GITHUB_REPO:-${2:-${DEFAULT_REPO}}}"
 
 GITHUB_URL="https://github.com/${GITHUB_USER}/${GITHUB_REPO}.git"
 
@@ -793,9 +835,15 @@ if [ -d "${INSTALL_DIR}/.git" ]; then
 fi
 DEPLOY_BRANCH="${AIMILIVPN_BRANCH:-$DEFAULT_DEPLOY_BRANCH}"
 
-echo -e "\n${YELLOW}[2/4] 正在从 GitHub 部署源代码到 ${INSTALL_DIR} (目标分支: ${DEPLOY_BRANCH})...${PLAIN}"
-if [ -f "${INSTALL_DIR}/.local_dev" ]; then
-    echo -e "${GREEN}检测到本地开发模式 (.local_dev)，跳过 git pull/reset 保持本地修改。${PLAIN}"
+SCRIPT_SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+echo -e "\n${YELLOW}[2/4] 正在部署源代码到 ${INSTALL_DIR} (目标分支: ${DEPLOY_BRANCH})...${PLAIN}"
+if [ "${AIMILI_LOCAL_SOURCE:-}" = "1" ] || [ -f "${INSTALL_DIR}/.local_dev" ] || [ -f "${SCRIPT_SOURCE_DIR}/.local_dev" ]; then
+    echo -e "${GREEN}检测到本地源码模式 (AIMILI_LOCAL_SOURCE / .local_dev)，跳过 GitHub 克隆并同步本地最新代码至 ${INSTALL_DIR} ...${PLAIN}"
+    mkdir -p "${INSTALL_DIR}"
+    if [ "${SCRIPT_SOURCE_DIR}" != "${INSTALL_DIR}" ]; then
+        cp -rf "${SCRIPT_SOURCE_DIR}"/* "${INSTALL_DIR}/"
+    fi
+    touch "${INSTALL_DIR}/.local_dev"
 else
     if [ -d "${INSTALL_DIR}" ]; then
         echo -e "  -> 目录 ${INSTALL_DIR} 已存在，正在更新并强制覆盖本地文件..."
@@ -832,8 +880,16 @@ else
                 git checkout "${DEPLOY_BRANCH}" || git checkout -b "${DEPLOY_BRANCH}" "origin/${DEPLOY_BRANCH}" || true
                 echo -e "${GREEN}  -> 克隆成功！${PLAIN}"
             else
-                echo -e "${RED}  -> 错误: 无法克隆仓库 ${GITHUB_URL}，请检查网络！${PLAIN}"
-                exit 1
+                SCRIPT_SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+                if [ -f "${SCRIPT_SOURCE_DIR}/aimili_cli.py" ]; then
+                    echo -e "${YELLOW}  -> GitHub 克隆受阻，检测到当前目录已包含完整源码，正在同步本地源码至 ${INSTALL_DIR} ...${PLAIN}"
+                    mkdir -p "${INSTALL_DIR}"
+                    cp -rf "${SCRIPT_SOURCE_DIR}"/* "${INSTALL_DIR}/"
+                    echo -e "${GREEN}  -> 本地源码同步成功！${PLAIN}"
+                else
+                    echo -e "${RED}  -> 错误: 无法克隆仓库 ${GITHUB_URL}，且无本地源码可用！${PLAIN}"
+                    exit 1
+                fi
             fi
         fi
     fi

@@ -39,12 +39,20 @@ get_current_version() {
 get_latest_release() {
     local api_url="https://api.github.com/repos/SagerNet/sing-box/releases/latest"
     local tag=""
-    tag=$(curl -fsSL --connect-timeout 4 --max-time 8 -H "User-Agent: Mozilla/5.0" "$api_url" 2>/dev/null | grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/^v//' || true)
-    if [ -z "$tag" ]; then
-        # 兜底备用：通过 GitHub 重定向获取最新 tag
-        tag=$(curl -fsSI --connect-timeout 4 --max-time 8 "https://github.com/SagerNet/sing-box/releases/latest" 2>/dev/null | grep -i '^location:' | sed -E 's/.*\/tag\/v?([^/\r\n]+).*/\1/' || true)
+    if command -v jq >/dev/null 2>&1; then
+        tag=$(curl -fsSL --connect-timeout 4 --max-time 8 -H "User-Agent: Mozilla/5.0" "$api_url" 2>/dev/null | jq -r '.tag_name // empty' 2>/dev/null | sed 's/^v//' || true)
     fi
-    [ -z "$tag" ] && tag="1.14.3"
+    if [ -z "$tag" ]; then
+        tag=$(curl -fsSL --connect-timeout 4 --max-time 8 -H "User-Agent: Mozilla/5.0" "$api_url" 2>/dev/null | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/^v//' || true)
+    fi
+    if [ -z "$tag" ]; then
+        # 兜底备用：通过 GitHub 重定向获取最新 tag (严格匹配数字版本号，防贪婪匹配)
+        tag=$(curl -fsSI --connect-timeout 4 --max-time 8 "https://github.com/SagerNet/sing-box/releases/latest" 2>/dev/null | grep -i '^location:' | grep -oiE 'tag/v?[0-9.]+' | head -1 | sed -E 's/tag\/v?//' || true)
+    fi
+    # 最终防御：必须符合 x.y.z 语义化版本号，否则强制回退至已知稳定版 1.14.4
+    if ! echo "$tag" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
+        tag="1.14.4"
+    fi
     echo "$tag"
 }
 
