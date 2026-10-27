@@ -291,7 +291,7 @@ aimili_uninstall() {
             kill "${p}" >/dev/null 2>&1
         done
     }
-    for u in aimilivpn aimilivpn-github-update.timer aimilivpn-github-update sing-box cloudflared-argo aimilivpn-tgbot; do
+    for u in aimilivpn aimilivpn-github-update.timer aimilivpn-github-update sing-box cloudflared cloudflared-argo aimilivpn-tgbot; do
         systemctl stop "$u" >/dev/null 2>&1
         systemctl disable "$u" >/dev/null 2>&1
     done
@@ -301,6 +301,7 @@ aimili_uninstall() {
     aimili_kill_pattern 'openvpn --config /opt/aimilivpn'
     aimili_kill_pattern 'sstpc .*--save-server-route'
     aimili_kill_pattern 'dhclient .*vpn_'
+    aimili_kill_pattern 'cloudflared'
     local ns
     for ns in $(ip netns list 2>/dev/null | awk '{print $1}' | grep -E '^(prod|aimili|alh|probe)'); do
         ip netns pids "${ns}" 2>/dev/null | xargs -r kill >/dev/null 2>&1
@@ -359,8 +360,8 @@ aimili_uninstall() {
         AIMILI_VPN_SVCS="${AIMILI_VPN_SVCS} ${vp}"
     done
     # AimiliVPN 自己的 acme 与维护任务删掉；证书缓存 /var/lib/aimilivpn-acme 保留，重装直接装、不重签
-    rm -f /etc/cron.d/aimilivpn-acme /etc/cron.d/aimilivpn-maintenance /var/log/aimilivpn-maintenance.log /var/log/cloudflared-argo.log /var/log/sing-box.log /var/log/aimilivpn.log /run/lock/aimilivpn-cert.lock
-    rm -rf /etc/systemd/system/aimilivpn.service.d /etc/systemd/system/cloudflared-argo.service /etc/systemd/system/aimilivpn-tgbot.service \
+    rm -f /etc/cron.d/aimilivpn-acme /etc/cron.d/aimilivpn-maintenance /var/log/aimilivpn-maintenance.log /var/log/cloudflared-argo.log /var/log/cloudflared.log /var/log/sing-box.log /var/log/aimilivpn.log /run/lock/aimilivpn-cert.lock
+    rm -rf /etc/systemd/system/aimilivpn.service.d /etc/systemd/system/cloudflared-argo.service /etc/systemd/system/cloudflared.service /etc/systemd/system/aimilivpn-tgbot.service \
         /opt/aimilivpn /etc/aimilivpn /var/lib/aimilivpn /var/www/aimilivpn-acme /var/www/aimilivpn-sub /var/www/camouflage \
         /etc/sing-box /etc/systemd/system/sing-box.service /usr/local/bin/sing-box /tmp/aimilivpn*
     while iptables -t nat -D PREROUTING -p udp --dport 40000:50000 -j REDIRECT --to-ports 443 2>/dev/null; do :; done
