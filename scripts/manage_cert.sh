@@ -37,6 +37,12 @@ get_public_ip() {
     echo "127.0.0.1"
 }
 
+get_public_ipv6() {
+    curl -6fsS --connect-timeout 4 --max-time 6 https://api64.ipify.org 2>/dev/null || \
+    curl -6fsS --connect-timeout 4 --max-time 6 https://ifconfig.co 2>/dev/null || \
+    echo ""
+}
+
 get_bound_domain() {
     local d=""
     if [ -f "$PROXY_ENV_FILE" ]; then
@@ -53,7 +59,7 @@ ensure_acme_sh() {
         return 0
     fi
     echo -e "${YELLOW}  -> 正在初始化安装官方 ACME 证书签发引擎 (acme.sh)...${PLAIN}"
-    local email="admin-aimili-$(head /dev/urandom | tr -dc 'a-z0-9' | head -c 8)@gmail.com"
+    local email="cert-aimili-$(head -c 4 /dev/urandom | xxd -p 2>/dev/null || date +%s)@gmail.com"
     curl -fsSL https://get.acme.sh | sh -s email="$email" >/dev/null 2>&1 || true
     if [ -x "$HOME/.acme.sh/acme.sh" ]; then
         "$HOME/.acme.sh/acme.sh" --upgrade --auto-upgrade >/dev/null 2>&1 || true
@@ -122,6 +128,8 @@ apply_new_cert_http() {
     ensure_acme_sh
     local pub_ip
     pub_ip=$(get_public_ip)
+    local pub_ipv6
+    pub_ipv6=$(get_public_ipv6)
     local cur_domain
     cur_domain=$(get_bound_domain)
 
@@ -141,24 +149,75 @@ apply_new_cert_http() {
         return 1
     fi
 
-    echo -e "${YELLOW}  -> 正在检测域名 ${domain} 的 DNS 解析...${PLAIN}"
-    local resolved_ip=""
-    resolved_ip=$(python3 -c "import socket; print(socket.gethostbyname('$domain'))" 2>/dev/null || echo "")
-    if [ -n "$resolved_ip" ]; then
-        if [ "$resolved_ip" = "$pub_ip" ]; then
-            echo -e "${GREEN}  -> DNS 解析正常！${domain} -> ${resolved_ip}${PLAIN}"
+    echo -e "${YELLOW}  -> 正在检测域名 ${domain} 的双栈 DNS 解析 (IPv4 / IPv6)...${PLAIN}"
+    local dns_res
+    dns_res=$(python3 -c "
+import socket, sys
+domain = sys.argv[1]
+v4, v6 = [], []
+try:
+    for item in socket.getaddrinfo(domain, None):
+        ip = item[4][0]
+        if ':' in ip and ip not in v6:
+            v6.append(ip)
+        elif '.' in ip and ip not in v4:
+            v4.append(ip)
+except Exception:
+    pass
+print(';'.join(v4) + '|' + ';'.join(v6))
+" "$domain" 2>/dev/null || echo "|")
+
+    local resolved_v4="${dns_res%%|*}"
+    local resolved_v6="${dns_res##*|}"
+
+    local is_cf_cdn=0
+    # 检查是否为 Cloudflare CDN IP 段 (开启了小黄云代理)
+    if [[ "$resolved_v4" =~ (104\.(1[6-9]|2[0-7])\.|172\.(6[4-9]|7[0-1])\.|162\.159\.|198\.41\.) ]] || [[ "$resolved_v6" =~ 2606:4700: ]]; then
+        is_cf_cdn=1
+    fi
+
+    if [ -n "$resolved_v4" ]; then
+        if [ "$resolved_v4" = "$pub_ip" ]; then
+            echo -e "${GREEN}  -> [IPv4 A 记录] 解析正常: ${domain} -> ${resolved_v4} (与本机 IPv4 匹配)${PLAIN}"
         else
-            echo -e "${YELLOW}警告: 域名 ${domain} 解析到的 IP (${resolved_ip}) 与本机公网 IP (${pub_ip}) 不一致！${PLAIN}"
-            if [ -t 0 ] && [ -z "${1:-}" ]; then
-                read -r -p "确定仍要继续申请吗？可能导致 ACME 验证失败 [y/N]: " force_go
-                if [[ ! "$force_go" =~ ^[yY]$ ]]; then
-                    echo "已取消。"
-                    return 1
-                fi
-            fi
+            echo -e "${YELLOW}  -> [IPv4 A 记录] 解析为: ${resolved_v4} (本机公网 IPv4: ${pub_ip})${PLAIN}"
         fi
     else
-        echo -e "${YELLOW}警告: 无法解析域名 ${domain}，请确认 DNS 是否已生效。${PLAIN}"
+        echo -e "${YELLOW}  -> [IPv4 A 记录] 未检测到 IPv4 解析${PLAIN}"
+    fi
+
+    if [ -n "$resolved_v6" ]; then
+        if [ -n "$pub_ipv6" ] && [[ "$resolved_v6" == *"$pub_ipv6"* ]]; then
+            echo -e "${GREEN}  -> [IPv6 AAAA 记录] 解析正常: ${domain} -> ${resolved_v6} (与本机 IPv6 匹配)${PLAIN}"
+        else
+            echo -e "${YELLOW}  -> [IPv6 AAAA 记录] 解析为: ${resolved_v6} (本机公网 IPv6: ${pub_ipv6:-未探测到})${PLAIN}"
+        fi
+    else
+        echo -e "${YELLOW}  -> [IPv6 AAAA 记录] 未检测到 IPv6 解析${PLAIN}"
+    fi
+
+    if [ "$is_cf_cdn" = "1" ]; then
+        echo ""
+        echo -e "${RED}======================================================================${PLAIN}"
+        echo -e "${BOLD}${RED}⚠️【严重告警: 检测到当前域名已开启 Cloudflare CDN 代理 (小黄云)！】${PLAIN}"
+        echo -e "${RED}======================================================================${PLAIN}"
+        echo -e "  * 当前公网解析已被 Cloudflare 边缘节点接管 (Anycast CDN IP)。"
+        echo -e "  * 官方 HTTP-01 验证必须由 Let's Encrypt 直接连接您 VPS 本机的 80 端口。"
+        echo -e "    若开启了小黄云，验证请求将被 Cloudflare 拦截，将导致申请失败！"
+        echo -e "  * ${BOLD}${GREEN}解决方案建议:${PLAIN}"
+        echo -e "    ① ${BOLD}${YELLOW}[方案 A - 强烈推荐]${PLAIN} 改用 ${BOLD}ml cert${PLAIN} 菜单中的 ${CYAN}[2] Cloudflare DNS-01 API 验证${PLAIN}；"
+        echo -e "       (无论是否开小黄云、无论 80 端口是否被封，直接通过 API 秒级签发泛域名证书！)"
+        echo -e "    ② ${BOLD}${YELLOW}[方案 B - 临时关云]${PLAIN} 登录 Cloudflare 将该域名的代理状态临时切为 ${BOLD}仅 DNS (灰云)${PLAIN}，"
+        echo -e "       待本脚本签发成功后，再切回开启小黄云。"
+        echo -e "${RED}======================================================================${PLAIN}"
+        echo ""
+        if [ -t 0 ] && [ -z "${1:-}" ]; then
+            read -r -p "是否仍要尝试继续强制签发？[y/N]: " force_cf_go
+            if [[ ! "$force_cf_go" =~ ^[yY]$ ]]; then
+                echo "已取消。建议改用 Cloudflare DNS API 模式签发。"
+                return 1
+            fi
+        fi
     fi
 
     local ca_choice="${target_ca:-1}"
@@ -176,9 +235,12 @@ apply_new_cert_http() {
         *) ca_server="letsencrypt" ;;
     esac
 
-    # 防火墙临时放行 80 端口用于验证
+    # 防火墙临时放行 80 端口用于验证 (IPv4 + IPv6 双栈)
     if command -v iptables >/dev/null 2>&1; then
         iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
+    fi
+    if command -v ip6tables >/dev/null 2>&1; then
+        ip6tables -I INPUT 1 -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
     fi
     if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
         ufw allow 80/tcp >/dev/null 2>&1 || true
@@ -193,6 +255,15 @@ apply_new_cert_http() {
     if [ -x "$acme_bin" ]; then
         echo -e "${YELLOW}  -> 正在使用 acme.sh 签发 ${domain} 证书 (CA: ${ca_server})...${PLAIN}"
         "$acme_bin" --set-default-ca --server "$ca_server" >/dev/null 2>&1 || true
+
+        # 确保 ACME 注册邮箱符合公共顶级域名 (TLD) 规范，杜绝 Let's Encrypt invalidContact (400) 拒绝
+        local reg_email="cert-admin-$(head -c 4 /dev/urandom | xxd -p 2>/dev/null || date +%s)@gmail.com"
+        if [ -f "$HOME/.acme.sh/account.conf" ]; then
+            sed -i "s|admin@aimilivpn.local|${reg_email}|g" "$HOME/.acme.sh/account.conf" 2>/dev/null || true
+            sed -i "s|\.local'|@gmail.com'|g" "$HOME/.acme.sh/account.conf" 2>/dev/null || true
+        fi
+        "$acme_bin" --register-account -m "$reg_email" --server "$ca_server" >/dev/null 2>&1 || true
+        "$acme_bin" --update-account --accountemail "$reg_email" >/dev/null 2>&1 || true
 
         # 优先使用 Nginx Webroot 模式（零停机）
         if systemctl is-active --quiet nginx 2>/dev/null; then
@@ -284,6 +355,14 @@ apply_new_cert_dns() {
             export CF_Token="$CF_Token"
         fi
     fi
+
+    local reg_email="cert-admin-$(head -c 4 /dev/urandom | xxd -p 2>/dev/null || date +%s)@gmail.com"
+    if [ -f "$HOME/.acme.sh/account.conf" ]; then
+        sed -i "s|admin@aimilivpn.local|${reg_email}|g" "$HOME/.acme.sh/account.conf" 2>/dev/null || true
+        sed -i "s|\.local'|@gmail.com'|g" "$HOME/.acme.sh/account.conf" 2>/dev/null || true
+    fi
+    "$acme_bin" --register-account -m "$reg_email" >/dev/null 2>&1 || true
+    "$acme_bin" --update-account --accountemail "$reg_email" >/dev/null 2>&1 || true
 
     echo -e "${YELLOW}  -> 正在通过 Cloudflare DNS API 自动化签发证书...${PLAIN}"
     if "$acme_bin" --issue --dns dns_cf -d "$cf_domain" --keylength ec-256; then
