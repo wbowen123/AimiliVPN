@@ -14,7 +14,6 @@ import os
 import sys
 import base64
 import csv
-import io
 import time
 import socket
 import ipaddress
@@ -25,7 +24,8 @@ import threading
 import tempfile
 import shutil
 import ctypes
-from typing import List, Dict, Optional, Tuple
+import ctypes.util
+from typing import List, Optional, Tuple
 
 # Linux 系统常量
 CLONE_NEWNET = 0x40000000
@@ -540,7 +540,7 @@ class NetnsBridgeServer:
             if not ver or ver[0] != 0x05:
                 client.close()
                 return
-            methods = client.recv(nmethods[0])
+            client.recv(nmethods[0])
             client.sendall(b"\x05\x00")  # 无需认证
 
             # 2. 读取连接请求
