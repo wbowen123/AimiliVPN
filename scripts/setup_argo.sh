@@ -166,6 +166,7 @@ start_token_tunnel() {
         read -r token
     fi
 
+    token=$(echo "$token" | sed -E 's/^[[:space:]]*cloudflared[[:space:]]+service[[:space:]]+install[[:space:]]+//' | tr -d '[:space:]')
     if [[ -z "${token}" ]]; then
         log_err "Token 不能为空！"
         return 1
@@ -174,17 +175,20 @@ start_token_tunnel() {
     if [[ -z "${domain}" ]]; then
         echo ""
         echo -e "${C_CYAN}请输入您在 Cloudflare Zero Trust 控制台为该隧道绑定的公网域名：${C_RESET}"
-        echo -e "例如: ${C_GREEN}argo.yourdomain.com${C_RESET}"
+        echo -e "例如: ${C_GREEN}us.moyii.xyz${C_RESET} 或 ${C_GREEN}argo.yourdomain.com${C_RESET}"
         echo -ne "公网域名: "
         read -r domain
     fi
 
     if [[ -z "${local_port}" ]]; then
         echo ""
-        echo -e "${C_YELLOW}【关键回源端口提示】${C_RESET}"
-        echo -e "AimiliVPN 的 Sing-box VMess 服务默认监听在本地 ${C_GREEN}8445${C_RESET} 端口 (HTTP)。"
-        echo -e "${C_RED}⚠️ 注意：Cloudflare 控制台新建主机名时，默认可能会填入 8001 或 80 等占位符。${C_RESET}"
-        echo -e "${C_RED}切勿使用 8001！必须将 Cloudflare 控制台的 URL 修改为与此处完全一致的端口！${C_RESET}"
+        echo -e "${C_YELLOW}======================================================================${C_RESET}"
+        echo -e "${C_BOLD}${C_YELLOW}【关键回源端口提示 (务必与 Cloudflare 控制台 Public Hostname 保持一致)】${C_RESET}"
+        echo -e "${C_YELLOW}======================================================================${C_RESET}"
+        echo -e "  * 选项 A (强烈推荐): ${C_BOLD}${C_GREEN}8445${C_RESET} - Sing-box VMess-xHTTP 极速穿透端口 (路径: /vmess)"
+        echo -e "  * 选项 B (兼容模式): ${C_BOLD}${C_GREEN}8446${C_RESET} - Sing-box VMess-WebSocket 兼容端口 (路径: /vmess-ws)"
+        echo -e "  ⚠️ 警告: 若您在 Cloudflare 后台设置的 Service URL 为 ${C_CYAN}http://127.0.0.1:8446${C_RESET}，此处请输入 ${C_BOLD}8446${C_RESET}；"
+        echo -e "          若填写的是 8445，此处请输入 8445。切勿使用 80 或 8001！"
         echo -ne "请输入本地回源端口 [默认推荐 8445]: "
         read -r local_port
         local_port="${local_port:-8445}"
@@ -194,20 +198,37 @@ start_token_tunnel() {
     echo -e "${C_GREEN}======================================================================${C_RESET}"
     echo -e "${C_BOLD}${C_GREEN}  📌 Cloudflare Zero Trust 控制台回源核对清单 (务必核实):${C_RESET}"
     echo -e "  ① 登录 Cloudflare Zero Trust -> Networks -> Tunnels -> 点击你的隧道"
-    echo -e "  ② 进入 ${C_YELLOW}Public Hostnames${C_RESET} 标签页 -> 点击 Add a public hostname"
+    echo -e "  ② 进入 ${C_YELLOW}Public Hostnames${C_RESET} 标签页 -> 点击 Add a public hostname (或编辑现有项)"
     echo -e "  ③ 严格按照以下参数填写:"
     echo -e "     - Subdomain / Domain:  ${C_BOLD}${C_CYAN}${domain:-未填写}${C_RESET}"
-    echo -e "     - Path:                ${C_CYAN}/vmess${C_RESET} (或留空)"
-    echo -e "     - Service Type:        ${C_BOLD}${C_YELLOW}HTTP${C_RESET}  ${C_RED}(千万不要选 HTTPS)${C_RESET}"
-    echo -e "     - URL:                 ${C_BOLD}${C_GREEN}127.0.0.1:${local_port}${C_RESET} (或 localhost:${local_port})"
+    if [ "${local_port}" = "8446" ]; then
+        echo -e "     - Path:                ${C_CYAN}/vmess-ws${C_RESET} (或留空)"
+        echo -e "     - Service Type:        ${C_BOLD}${C_YELLOW}HTTP${C_RESET}  ${C_RED}(千万不要选 HTTPS)${C_RESET}"
+        echo -e "     - URL:                 ${C_BOLD}${C_GREEN}127.0.0.1:8446${C_RESET} (或 localhost:8446)"
+    else
+        echo -e "     - Path:                ${C_CYAN}/vmess${C_RESET} (或留空)"
+        echo -e "     - Service Type:        ${C_BOLD}${C_YELLOW}HTTP${C_RESET}  ${C_RED}(千万不要选 HTTPS)${C_RESET}"
+        echo -e "     - URL:                 ${C_BOLD}${C_GREEN}127.0.0.1:8445${C_RESET} (或 localhost:8445)"
+    fi
     echo -e "  ⚠️ 若 Cloudflare 界面默认显示 8001，请务必覆盖为: ${C_BOLD}${C_GREEN}127.0.0.1:${local_port}${C_RESET}"
     echo -e "${C_GREEN}======================================================================${C_RESET}"
     echo ""
 
     log_info "正在配置 Cloudflare 固定 Token 隧道服务 (Named Tunnel)..."
+    systemctl stop cloudflared >/dev/null 2>&1 || true
     systemctl stop cloudflared-argo.service >/dev/null 2>&1 || true
 
-    cat > "${SERVICE_FILE}" <<EOF
+    local service_ok=0
+    if "${CLOUDFLARED_BIN}" service install "${token}" >/dev/null 2>&1; then
+        systemctl daemon-reload
+        systemctl enable cloudflared >/dev/null 2>&1 || true
+        if systemctl restart cloudflared >/dev/null 2>&1; then
+            service_ok=1
+        fi
+    fi
+
+    if [[ ${service_ok} -ne 1 ]]; then
+        cat > "${SERVICE_FILE}" <<EOF
 [Unit]
 Description=Cloudflare Argo Named Tunnel Client for AimiliVPN
 After=network.target network-online.target
@@ -225,11 +246,12 @@ StandardError=file:${ARGO_LOG}
 [Install]
 WantedBy=multi-user.target
 EOF
-
-    > "${ARGO_LOG}"
-    systemctl daemon-reload
-    systemctl enable cloudflared-argo.service >/dev/null 2>&1 || true
-    systemctl restart cloudflared-argo.service
+        chmod 600 "${SERVICE_FILE}"
+        > "${ARGO_LOG}"
+        systemctl daemon-reload
+        systemctl enable cloudflared-argo.service >/dev/null 2>&1 || true
+        systemctl restart cloudflared-argo.service
+    fi
 
     cat > "${ARGO_JSON}" <<EOF
 {
@@ -267,6 +289,8 @@ EOF
 
 stop_tunnel() {
     log_info "正在停止 Cloudflare Argo 隧道服务..."
+    systemctl stop cloudflared >/dev/null 2>&1 || true
+    systemctl disable cloudflared >/dev/null 2>&1 || true
     systemctl stop cloudflared-argo.service >/dev/null 2>&1 || true
     systemctl disable cloudflared-argo.service >/dev/null 2>&1 || true
     rm -f "${ARGO_JSON}"
@@ -280,7 +304,7 @@ show_status() {
     echo -e "${C_GREEN}======================================================================${C_RESET}"
 
     local is_active="未运行"
-    if systemctl is-active --quiet cloudflared-argo.service 2>/dev/null; then
+    if systemctl is-active --quiet cloudflared 2>/dev/null || systemctl is-active --quiet cloudflared-argo.service 2>/dev/null; then
         is_active="${C_GREEN}正在运行 (active)${C_RESET}"
     else
         is_active="${C_RED}未运行 (inactive)${C_RESET}"
@@ -293,11 +317,14 @@ show_status() {
         t=$(grep -oE '"type": "[^"]+"' "${ARGO_JSON}" | cut -d'"' -f4 || true)
         local d
         d=$(grep -oE '"domain": "[^"]+"' "${ARGO_JSON}" | cut -d'"' -f4 || true)
+        local lp
+        lp=$(grep -oE '"local_port": [0-9]+' "${ARGO_JSON}" | cut -d':' -f2 | tr -d ' ' || echo "8445")
         echo -e "  隧道类型:           ${C_YELLOW}${t}${C_RESET}"
         if [[ -n "${d}" ]]; then
-            echo -e "  穿透域名:           ${C_BLUE}https://${d}${C_RESET}"
+            echo -e "  穿透公网域名:       ${C_BLUE}https://${d}${C_RESET}"
+            echo -e "  本地回源服务:       ${C_GREEN}http://127.0.0.1:${lp}${C_RESET} (${C_YELLOW}需与 Cloudflare Public Hostname 严格一致${C_RESET})"
             echo -e "  节点伪装 SNI/Host:  ${C_BLUE}${d}${C_RESET}"
-            echo -e "  节点连接地址:       可直接使用 Cloudflare 优选 IP (如 104.16.0.1) 提升速度！"
+            echo -e "  Anycast 优选加速:   已就绪 (可无缝使用 Cloudflare 优选 IP 降低延迟)"
         fi
     fi
 
@@ -312,9 +339,11 @@ show_status() {
 
 uninstall_argo() {
     log_info "正在清理并卸载 Argo 隧道..."
+    systemctl stop cloudflared >/dev/null 2>&1 || true
+    systemctl disable cloudflared >/dev/null 2>&1 || true
     systemctl stop cloudflared-argo.service >/dev/null 2>&1 || true
     systemctl disable cloudflared-argo.service >/dev/null 2>&1 || true
-    rm -f "${SERVICE_FILE}" "${ARGO_LOG}" "${ARGO_JSON}"
+    rm -f /etc/systemd/system/cloudflared.service "${SERVICE_FILE}" "${ARGO_LOG}" "${ARGO_JSON}"
     rm -f "${CLOUDFLARED_BIN}"
     systemctl daemon-reload
     log_info "Argo 隧道与 cloudflared 已完全卸载。"

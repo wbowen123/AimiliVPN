@@ -166,6 +166,7 @@ def generate_subscriptions(nodes_data, output_dir):
 
     # 读取 Argo 隧道配置
     argo_domain = nodes_data.get("argo_domain", "")
+    argo_local_port = 8445
     if not argo_domain:
         argo_file = os.path.join(data_dir_path, "argo_info.json")
         if os.path.exists(argo_file):
@@ -173,6 +174,7 @@ def generate_subscriptions(nodes_data, output_dir):
                 with open(argo_file, "r", encoding="utf-8") as af:
                     argo_data = json.load(af)
                     argo_domain = argo_data.get("domain", "")
+                    argo_local_port = int(argo_data.get("local_port", 8445))
             except Exception:
                 pass
 
@@ -397,20 +399,34 @@ def generate_subscriptions(nodes_data, output_dir):
     # ==========================================================================
     # C. 生成 Cloudflare CDN 与 Argo 穿透节点 (注入 Anycast 优选 IP)
     # ==========================================================================
-    # C1. VMess-Argo (仅当配置了 Argo 隧道公网域名时激活，直通本地 8445 HTTP)
+    # C1. VMess-Argo (仅当配置了 Argo 隧道公网域名时激活，直通本地 8445 HTTP 或 8446 WS)
     if argo_domain:
-        vmess_argo_obj = {
-            "v": "2", "ps": node_names["vmess_argo_v4"], "add": clean_ip, "port": 443,
-            "id": direct_uuid, "aid": 0, "net": "http", "type": "none",
-            "host": argo_domain, "path": "/vmess", "tls": "tls", "sni": argo_domain
-        }
+        if argo_local_port == 8446:
+            vmess_argo_obj = {
+                "v": "2", "ps": node_names["vmess_argo_v4"], "add": clean_ip, "port": 443,
+                "id": direct_uuid, "aid": 0, "net": "ws", "type": "none",
+                "host": argo_domain, "path": "/vmess-ws", "tls": "tls", "sni": argo_domain
+            }
+            clash_argo_proxy = {
+                "name": node_names["vmess_argo_v4"], "type": "vmess", "server": clean_ip, "port": 443,
+                "uuid": direct_uuid, "alterId": 0, "cipher": "auto", "network": "ws",
+                "ws-opts": {"path": "/vmess-ws", "headers": {"Host": argo_domain}},
+                "tls": True, "servername": argo_domain, "skip-cert-verify": False
+            }
+        else:
+            vmess_argo_obj = {
+                "v": "2", "ps": node_names["vmess_argo_v4"], "add": clean_ip, "port": 443,
+                "id": direct_uuid, "aid": 0, "net": "http", "type": "none",
+                "host": argo_domain, "path": "/vmess", "tls": "tls", "sni": argo_domain
+            }
+            clash_argo_proxy = {
+                "name": node_names["vmess_argo_v4"], "type": "vmess", "server": clean_ip, "port": 443,
+                "uuid": direct_uuid, "alterId": 0, "cipher": "auto", "network": "http",
+                "http-opts": {"path": ["/vmess"], "headers": {"Host": [argo_domain]}},
+                "tls": True, "servername": argo_domain, "skip-cert-verify": False
+            }
         links.append("vmess://" + base64.b64encode(json.dumps(vmess_argo_obj).encode("utf-8")).decode("utf-8"))
-        clash_proxies.append({
-            "name": node_names["vmess_argo_v4"], "type": "vmess", "server": clean_ip, "port": 443,
-            "uuid": direct_uuid, "alterId": 0, "cipher": "auto", "network": "http",
-            "http-opts": {"path": ["/vmess"], "headers": {"Host": [argo_domain]}},
-            "tls": True, "servername": argo_domain, "skip-cert-verify": False
-        })
+        clash_proxies.append(clash_argo_proxy)
 
     # C2, C3, C4: Cloudflare CDN 小黄云代理节点 (严格使用 cdn_host，严禁被 argo_domain 或主域名污染)
     cf_cdn_host = cdn_host
@@ -782,12 +798,20 @@ def generate_subscriptions(nodes_data, output_dir):
 
     # 追加 CDN 节点到 Singbox 客户端配置
     if argo_domain:
-        sb_outbounds_list.append({
-            "type": "vmess", "tag": node_names["vmess_argo_v4"], "server": clean_ip, "server_port": 443,
-            "uuid": direct_uuid, "security": "auto",
-            "transport": {"type": "http", "path": "/vmess", "host": [argo_domain]},
-            "tls": {"enabled": True, "server_name": argo_domain}
-        })
+        if argo_local_port == 8446:
+            sb_outbounds_list.append({
+                "type": "vmess", "tag": node_names["vmess_argo_v4"], "server": clean_ip, "server_port": 443,
+                "uuid": direct_uuid, "security": "auto",
+                "transport": {"type": "ws", "path": "/vmess-ws", "headers": {"Host": argo_domain}},
+                "tls": {"enabled": True, "server_name": argo_domain}
+            })
+        else:
+            sb_outbounds_list.append({
+                "type": "vmess", "tag": node_names["vmess_argo_v4"], "server": clean_ip, "server_port": 443,
+                "uuid": direct_uuid, "security": "auto",
+                "transport": {"type": "http", "path": "/vmess", "host": [argo_domain]},
+                "tls": {"enabled": True, "server_name": argo_domain}
+            })
     if cf_cdn_host:
         sb_outbounds_list.append({
             "type": "vmess", "tag": node_names["vmess_cdn_v4"], "server": clean_ip, "server_port": 8443,

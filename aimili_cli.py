@@ -278,7 +278,7 @@ def print_subscription_card():
     print("    (内置 Smart-DNS 分流与原生路由规则，开箱即用无需转换)")
     print(f"  * {C_GREEN}📄 Plaintext 原始节点列表:{C_RESET}  {C_BLUE}{sub['nodes_txt_url']}{C_RESET}")
     print(f"  * {C_YELLOW}⚡ 免证书纯净 HTTP 订阅:{C_RESET}     {C_BLUE}{sub['sub_url_18080']}{C_RESET} (Clash: {sub['clash_url_18080']})")
-    print(f"    (若客户端提示自签名 SSL 证书错误，直接使用此 18080 HTTP 端口免证书秒拉)")
+    print("    (若客户端提示自签名 SSL 证书错误，直接使用此 18080 HTTP 端口免证书秒拉)")
 
     if sub.get("sub_url_v6_18080"):
         print(f"\n{C_BOLD}【1-B. IPv6 专属极速订阅 (针对 IPv4 线路受阻/纯 IPv6 宽带网络)】{C_RESET}")
