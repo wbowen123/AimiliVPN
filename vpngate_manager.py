@@ -59,9 +59,9 @@ def _apply_patches(mod):
             with open(v_file, "r", encoding="utf-8") as vf:
                 VERSION_TAG = vf.read().strip()
         except Exception:
-            VERSION_TAG = "V1.4.8"
+            VERSION_TAG = "V1.5.0"
     else:
-        VERSION_TAG = "V1.4.8"
+        VERSION_TAG = "V1.5.0"
 
     def _get_commit():
         commit = ""
