@@ -108,13 +108,13 @@ def get_web_auth_data():
     public_ip = get_public_ip()
     host = web_domain if web_domain else public_ip
 
-    port = data.get("port", 8443)
+    external_port = 8443
     if secret_path:
-        web_url = f"https://{host}:{port}/{secret_path}/"
-        fallback_url = f"https://{public_ip}:{port}/{secret_path}/" if web_domain else web_url
+        web_url = f"https://{host}:{external_port}/{secret_path}/"
+        fallback_url = f"https://{public_ip}:{external_port}/{secret_path}/" if web_domain else web_url
     else:
-        web_url = f"https://{host}:{port}/"
-        fallback_url = f"https://{public_ip}:{port}/" if web_domain else web_url
+        web_url = f"https://{host}:{external_port}/"
+        fallback_url = f"https://{public_ip}:{external_port}/" if web_domain else web_url
 
     return {
         "username": username,
@@ -122,7 +122,7 @@ def get_web_auth_data():
         "secret_path": secret_path,
         "web_domain": web_domain,
         "public_ip": public_ip,
-        "port": port,
+        "port": external_port,
         "web_url": web_url,
         "fallback_url": fallback_url
     }

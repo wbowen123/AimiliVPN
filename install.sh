@@ -627,16 +627,29 @@ if [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -t 0 ]; then
         if [ -z "${AIMILIVPN_DOMAIN+x}" ]; then
             echo -e "\n${BOLD}${BLUE}【SSL/TLS 域名绑定与双栈 DNS 物理隔离规范 (推荐最佳实践)】${PLAIN}"
             echo -e "  * ${GREEN}双栈物理隔离规范 (彻底解决开小黄云拖慢直连与家宽的问题)${PLAIN}:"
-            echo -e "    ① direct.域名 -> 解析本机 IPv4/IPv6 [必须关闭小黄云/灰云] (专供直连与家宽跑满物理千兆)"
-            echo -e "    ② cdn.域名    -> 解析本机 IPv4/IPv6 [必须开启小黄云/橙云] (专供 CDN/Argo 破墙救急与免流)"
+            echo -e "    ① 直连主域名 (必须关闭小黄云/灰云) -> 解析本机 IP，用于直连/家宽/订阅中心/管理后台，跑满物理千兆"
+            echo -e "    ② CDN穿透域名 (必须开启小黄云/橙云) -> 解析本机 IP，用于 Cloudflare Anycast CDN 破墙与免流"
             echo -e "  * ${YELLOW}若暂无域名${PLAIN}: 直接回车，系统将自动签发 10 年免维护 IP ECC 专属证书（后续可随时 ml cert 补绑）；"
-            read -r -p "请输入您的域名 (例如 direct.example.com 或 example.com) [直接回车使用纯 IP 证书]: " AIMILIVPN_DOMAIN
+            read -r -p "请输入直连主域名 (例如 us03.moyil.xyz 或 direct.example.com) [直接回车使用纯 IP 证书]: " AIMILIVPN_DOMAIN
+            AIMILIVPN_DOMAIN=$(printf '%s' "${AIMILIVPN_DOMAIN:-}" | tr -d '[:space:]')
+
+            if [ -n "${AIMILIVPN_DOMAIN}" ]; then
+                echo -e "\n  * ${GREEN}Cloudflare CDN 穿透域名 (已在 Cloudflare 开启小黄云/橙云代理)${PLAIN}:"
+                echo -e "    💡 证书说明: 客户端由 Cloudflare 边缘节点自动提供权威 SSL 证书；VPS 本机只需为主域名签发证书即可承接回源流量。"
+                read -r -p "请输入 CDN 穿透域名 (例如 us03cdn.moyil.xyz 或 cdn.example.com) [若无直接回车跳过]: " AIMILIVPN_CDN_DOMAIN
+                AIMILIVPN_CDN_DOMAIN=$(printf '%s' "${AIMILIVPN_CDN_DOMAIN:-}" | tr -d '[:space:]')
+                export AIMILIVPN_CDN_DOMAIN
+            fi
         fi
         AIMILIVPN_DOMAIN=$(printf '%s' "${AIMILIVPN_DOMAIN:-}" | tr -d '[:space:]')
 
         if [ -n "${AIMILIVPN_DOMAIN}" ]; then
             echo -e "\n${BOLD}${BLUE}【域名证书签发与验证模式】${PLAIN}"
-            echo -e "  * [1] 官方 HTTP-01 验证 (需要开放 80 端口，全自动申请与续签) [推荐，直接回车]"
+            echo -e "  💡 说明: 系统将全自动为直连主域名 [${AIMILIVPN_DOMAIN}] 申请 Let's Encrypt 官方权威证书；"
+            if [ -n "${AIMILIVPN_CDN_DOMAIN:-}" ]; then
+                echo -e "  💡 提示: CDN 穿透域名 [${AIMILIVPN_CDN_DOMAIN}] 已由 Cloudflare 全球 Anycast 节点自动托管 SSL，无需 VPS 额外申请。"
+            fi
+            echo -e "  * [1] 官方 HTTP-01 验证 (80 端口全自动验证，永久自动续签) [推荐，直接回车]"
             echo -e "  * [2] Cloudflare DNS-01 API 验证 (免 80 端口 / 适合 80 端口被封的 VPS / 支持泛域名)"
             read -r -p "请选择验证方式 [1-2，默认 1]: " CERT_VERIFY_MODE
             CERT_VERIFY_MODE="${CERT_VERIFY_MODE:-1}"
@@ -670,6 +683,17 @@ if [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -t 0 ]; then
         echo -e "  * 作用说明: 仅为走 CDN/Argo 破墙穿透的节点替换为三网最优延迟 IP，绝不影响 VPS 真实物理直连与家宽。"
         read -r -p "是否在部署时自动执行三网 Anycast 延迟测速并自选最优 IP？[Y/n，默认 Y]: " DO_CF_SPEEDTEST
         DO_CF_SPEEDTEST=$(echo "${DO_CF_SPEEDTEST:-y}" | tr '[:upper:]' '[:lower:]')
+
+        echo -e "\n${BOLD}${BLUE}【Cloudflare Argo 固定穿透隧道 (救急 IPv4 被封/纯内网穿透)】${PLAIN}"
+        echo -e "  * 作用说明: 若本机公网 IPv4 受阻或无公网 IP，可通过 Cloudflare 官方 Argo 隧道将流量安全穿透至全球 Anycast 网络。"
+        read -r -p "是否配置 Cloudflare Argo 固定隧道 (Named Tunnel)？[y/N，默认 N]: " DO_ARGO_TUNNEL
+        if [[ "${DO_ARGO_TUNNEL:-n}" =~ ^[yY]$ ]]; then
+            read -r -p "请输入 Cloudflare 隧道 Token (例如 eyJhIjoi...): " ARGO_TUNNEL_TOKEN
+            ARGO_TUNNEL_TOKEN=$(echo "${ARGO_TUNNEL_TOKEN:-}" | tr -d '[:space:]')
+            read -r -p "请输入 Argo 穿透域名 (例如 argo.example.com): " ARGO_TUNNEL_DOMAIN
+            ARGO_TUNNEL_DOMAIN=$(echo "${ARGO_TUNNEL_DOMAIN:-}" | tr -d '[:space:]')
+            export ARGO_TUNNEL_TOKEN ARGO_TUNNEL_DOMAIN
+        fi
     fi
 
     if [ "${INSTALL_BBR:-y}" = "y" ]; then
@@ -1281,36 +1305,15 @@ if [ -n "${AIMILIVPN_DOMAIN:-}" ]; then
             echo -e "${YELLOW}Cloudflare DNS 申请未成功完成，继续尝试默认流程兜底...${PLAIN}"
         fi
     else
-        echo -e "\n${YELLOW}本地没有 ${AIMILIVPN_DOMAIN} 的证书，正在申请。失败则继续使用 IP 证书。${PLAIN}"
-        cs=""; w=0
-        while [ "$w" -lt 20 ]; do
-            cs=$(aimili_cert_state); case "${cs}" in issuing\|"${AIMILIVPN_DOMAIN}"\|*|installing\|"${AIMILIVPN_DOMAIN}"\|*|active\|"${AIMILIVPN_DOMAIN}"\|*|error\|"${AIMILIVPN_DOMAIN}"\|*) break ;; esac
-            sleep 2; w=$((w + 2))
-        done
-        case "${cs}" in
-            issuing\|*|installing\|*|active\|*|error\|*)
-                echo -e "  -> 由 AimiliVPN 服务申请（安装脚本不重复申请），等待结果..."
-                w=0
-                while [ "$w" -lt "${AIMILI_CERT_WAIT:-300}" ]; do
-                    cs=$(aimili_cert_state); case "${cs}" in active\|*|error\|*) break ;; esac
-                    sleep 3; w=$((w + 3))
-                done ;;
-            *)
-                python3 - "${INSTALL_DIR}" "${AIMILIVPN_DOMAIN}" <<'PY' >/dev/null 2>&1 || true
-import sys
-from pathlib import Path
-root, domain = sys.argv[1], sys.argv[2]
-sys.path.insert(0, root)
-from web_certificate import WebCertificateManager
-WebCertificateManager(Path(root) / "vpngate_data" / "web_certificate.json")._worker(domain)
-PY
-                cs=$(aimili_cert_state) ;;
-        esac
+        echo -e "\n${YELLOW}正在通过官方 ACME 引擎为 ${AIMILIVPN_DOMAIN} 申请 Let's Encrypt 证书 (HTTP-01 验证)...${PLAIN}"
+        if bash "${INSTALL_DIR}/scripts/manage_cert.sh" http "${AIMILIVPN_DOMAIN}" 1; then
+            echo -e "${GREEN}Let's Encrypt 官方权威域名证书已成功签发并挂载！${PLAIN}"
+        fi
         if aimili_cert_ready "${AIMILIVPN_DOMAIN}"; then
-            echo -e "${GREEN}域名证书已安装：${AIMILIVPN_DOMAIN}（$(openssl x509 -in /etc/aimilivpn/tls/fullchain.pem -noout -issuer 2>/dev/null | sed 's/^issuer= *//')）${PLAIN}"
+            echo -e "${GREEN}域名证书已就绪：${AIMILIVPN_DOMAIN}（$(openssl x509 -in /etc/aimilivpn/tls/fullchain.pem -noout -issuer 2>/dev/null | sed 's/^issuer= *//')）${PLAIN}"
         else
-            echo -e "${YELLOW}域名证书申请失败：${cs##*|}${PLAIN}"
-            echo -e "${YELLOW}继续使用已安装的 IP 证书。域名解析到本机并放开 80 端口后，可在网页里重试。${PLAIN}"
+            echo -e "${YELLOW}域名证书申请未成功完成，系统将继续使用纯 IP 高强度自签名证书兜底。${PLAIN}"
+            echo -e "${YELLOW}待域名 DNS 解析彻底全球生效并放开 80 端口后，您可随时在终端运行 ml cert 一键补办。${PLAIN}"
         fi
     fi
 fi

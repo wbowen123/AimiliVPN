@@ -216,25 +216,30 @@ if mode != "off" and os.path.exists(warp_file):
     if warp.get("v6"):
         addrs.append(warp.get("v6"))
 
+    peer_dict = {
+        "address": server_host,
+        "port": server_port,
+        "public_key": warp.get("peer_pub", "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo="),
+        "allowed_ips": ["0.0.0.0/0", "::/0"]
+    }
+    if warp.get("reserved") and warp.get("reserved") != [0, 0, 0]:
+        peer_dict["reserved"] = warp.get("reserved")
+
     warp_endpoint = {
         "type": "wireguard",
         "tag": "warp-out",
         "address": addrs,
         "private_key": warp.get("private_key", ""),
-        "peers": [
-            {
-                "address": server_host,
-                "port": server_port,
-                "public_key": warp.get("peer_pub", "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo="),
-                "allowed_ips": ["0.0.0.0/0", "::/0"],
-                "reserved": warp.get("reserved", [0, 0, 0])
-            }
-        ],
+        "peers": [peer_dict],
         "mtu": 1420
     }
     endpoints.append(warp_endpoint)
 
-cfg["endpoints"] = endpoints
+if endpoints:
+    cfg["endpoints"] = endpoints
+else:
+    cfg.pop("endpoints", None)
+
 cfg["outbounds"] = outbounds
 
 # 处理 route rules (严格限定仅对 direct-user 生效，绝对不劫持住宅家宽出口！)
@@ -348,6 +353,8 @@ EOF
     fi
 
     if [[ -n "$SB_BIN" ]]; then
+        local check_err=""
+        check_err=$("$SB_BIN" check -c "${SINGBOX_CONFIG}" 2>&1 || true)
         if "$SB_BIN" check -c "${SINGBOX_CONFIG}" >/dev/null 2>&1; then
             if systemctl restart sing-box.service >/dev/null 2>&1 && systemctl is-active --quiet sing-box.service 2>/dev/null; then
                 rm -f "${WARP_CONFIG_BAK}"
@@ -368,7 +375,7 @@ MODE_EOF
                 return 1
             fi
         else
-            log_err "Sing-box 语法检测未通过，配置已安全回滚！"
+            log_err "Sing-box 语法检测未通过，配置已安全回滚！错误详情: ${check_err}"
             if [[ -f "${WARP_CONFIG_BAK}" ]]; then
                 cp -f "${WARP_CONFIG_BAK}" "${SINGBOX_CONFIG}"
                 rm -f "${WARP_CONFIG_BAK}"

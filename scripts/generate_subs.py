@@ -10,6 +10,42 @@ import os
 import sys
 import urllib.parse
 
+def is_cert_trusted_ca(cert_path="/etc/aimilivpn/tls/fullchain.pem"):
+    """
+    检查证书是否由公共受信任 CA 颁发（如 Let's Encrypt / ZeroSSL）。
+    若为自签名证书、证书不存在或过期，返回 False。
+    """
+    if not os.path.isfile(cert_path):
+        return False
+    try:
+        import subprocess
+        res = subprocess.run(
+            ["openssl", "x509", "-in", cert_path, "-noout", "-subject", "-issuer"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2
+        )
+        if res.returncode != 0:
+            return False
+        subj = ""
+        iss = ""
+        for line in res.stdout.splitlines():
+            if line.startswith("subject="):
+                subj = line.replace("subject=", "").strip()
+            elif line.startswith("issuer="):
+                iss = line.replace("issuer=", "").strip()
+        if not subj or not iss or subj == iss:
+            return False
+        if any(bad in iss.lower() for bad in ["aimili", "self-signed", "snakeoil", "staging", "fake", "pebble"]):
+            return False
+        res_exp = subprocess.run(
+            ["openssl", "x509", "-in", cert_path, "-noout", "-checkend", "0"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2
+        )
+        if res_exp.returncode != 0:
+            return False
+        return True
+    except Exception:
+        return False
+
 def generate_subscriptions(nodes_data, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     data_dir_path = nodes_data.get("data_dir", "/opt/aimilivpn/vpngate_data")
@@ -30,6 +66,14 @@ def generate_subscriptions(nodes_data, output_dir):
                 pass
 
     domain = nodes_data.get("domain", "")
+
+    # 动态检测当前挂载证书是否为受信任 CA (Let's Encrypt / ZeroSSL 等)
+    # 若证书尚在签发中或为 IP 自签名证书，自动开启容错 insecure=1 / skip-cert-verify，避免客户端测速报 -1
+    cert_path = nodes_data.get("cert_file", "/etc/aimilivpn/tls/fullchain.pem")
+    has_trusted_cert = bool(domain and is_cert_trusted_ca(cert_path))
+    skip_cert_verify = not has_trusted_cert
+    insec_flag = "0" if has_trusted_cert else "1"
+    hy2_insec_param = "" if has_trusted_cert else "&insecure=1"
     
     # --------------------------------------------------------------------------
     # 0. 双栈 DNS 物理隔离智能解析 (架构推荐最佳实践):
@@ -191,7 +235,7 @@ def generate_subscriptions(nodes_data, output_dir):
     })
 
     # A2. Hysteria 2 IPv4
-    sni_param = f"&sni={domain}" if domain else f"&sni={camouflage_sni}&insecure=1"
+    sni_param = f"&sni={domain}{hy2_insec_param}" if domain else f"&sni={camouflage_sni}&insecure=1"
     obfs_param = f"&obfs=salamander&obfs-password={urllib.parse.quote(hy2_obfs)}" if hy2_obfs else ""
     mport_val = hy2_hop_ports if hy2_hop_ports else hy2_port
     hy2_d_v4 = f"hysteria2://{direct_uuid}@{public_ip}:{hy2_port}?mport={mport_val}{sni_param}{obfs_param}#{urllib.parse.quote(node_names['hy2_direct_v4'])}"
@@ -200,11 +244,11 @@ def generate_subscriptions(nodes_data, output_dir):
 
     hy2_p_d = {
         "name": node_names["hy2_direct_v4"], "type": "hysteria2", "server": public_ip, "port": hy2_port,
-        "password": direct_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
+        "password": direct_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": skip_cert_verify
     }
     hy2_p_r = {
         "name": node_names["hy2_resi_v4"], "type": "hysteria2", "server": public_ip, "port": hy2_port,
-        "password": resi_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
+        "password": resi_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": skip_cert_verify
     }
     if hy2_hop_ports:
         hy2_p_d["ports"] = str(hy2_hop_ports)
@@ -216,7 +260,6 @@ def generate_subscriptions(nodes_data, output_dir):
 
     # A3. TUIC v5 IPv4
     tuic_sni = domain if domain else camouflage_sni
-    insec_flag = "0" if domain else "1"
     tuic_d_v4 = f"tuic://{direct_uuid}:{short_id}@{public_ip}:{tuic_port}?congestion_control=bbr&alpn=h3&sni={tuic_sni}&allow_insecure={insec_flag}#{urllib.parse.quote(node_names['tuic_direct_v4'])}"
     tuic_r_v4 = f"tuic://{resi_uuid}:{short_id}@{public_ip}:{tuic_port}?congestion_control=bbr&alpn=h3&sni={tuic_sni}&allow_insecure={insec_flag}#{urllib.parse.quote(node_names['tuic_resi_v4'])}"
     links.extend([tuic_d_v4, tuic_r_v4])
@@ -224,12 +267,12 @@ def generate_subscriptions(nodes_data, output_dir):
     clash_proxies.append({
         "name": node_names["tuic_direct_v4"], "type": "tuic", "server": public_ip, "port": tuic_port,
         "uuid": direct_uuid, "password": short_id, "alpn": ["h3"], "congestion-controller": "bbr",
-        "sni": tuic_sni, "skip-cert-verify": bool(not domain)
+        "sni": tuic_sni, "skip-cert-verify": skip_cert_verify
     })
     clash_proxies.append({
         "name": node_names["tuic_resi_v4"], "type": "tuic", "server": public_ip, "port": tuic_port,
         "uuid": resi_uuid, "password": short_id, "alpn": ["h3"], "congestion-controller": "bbr",
-        "sni": tuic_sni, "skip-cert-verify": bool(not domain)
+        "sni": tuic_sni, "skip-cert-verify": skip_cert_verify
     })
 
     # A4. AnyTLS IPv4 (仅在服务端开启 AnyTLS 监听时生成)
@@ -292,11 +335,11 @@ def generate_subscriptions(nodes_data, output_dir):
         links.extend([hy2_d_v6, hy2_r_v6])
         hy2_p_d_v6 = {
             "name": node_names["hy2_direct_v6"], "type": "hysteria2", "server": public_ipv6, "port": hy2_port,
-            "password": direct_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
+            "password": direct_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": skip_cert_verify
         }
         hy2_p_r_v6 = {
             "name": node_names["hy2_resi_v6"], "type": "hysteria2", "server": public_ipv6, "port": hy2_port,
-            "password": resi_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
+            "password": resi_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": skip_cert_verify
         }
         if hy2_hop_ports:
             hy2_p_d_v6["ports"] = str(hy2_hop_ports)
@@ -313,12 +356,12 @@ def generate_subscriptions(nodes_data, output_dir):
         clash_proxies.append({
             "name": node_names["tuic_direct_v6"], "type": "tuic", "server": public_ipv6, "port": tuic_port,
             "uuid": direct_uuid, "password": short_id, "alpn": ["h3"], "congestion-controller": "bbr",
-            "sni": tuic_sni, "skip-cert-verify": bool(not domain)
+            "sni": tuic_sni, "skip-cert-verify": skip_cert_verify
         })
         clash_proxies.append({
             "name": node_names["tuic_resi_v6"], "type": "tuic", "server": public_ipv6, "port": tuic_port,
             "uuid": resi_uuid, "password": short_id, "alpn": ["h3"], "congestion-controller": "bbr",
-            "sni": tuic_sni, "skip-cert-verify": bool(not domain)
+            "sni": tuic_sni, "skip-cert-verify": skip_cert_verify
         })
 
         # B4. AnyTLS IPv6 (直连 + 住宅家宽，仅在开启 AnyTLS 时生成)
@@ -599,11 +642,11 @@ def generate_subscriptions(nodes_data, output_dir):
     # Hysteria 2
     hy2_sb_d = {
         "type": "hysteria2", "tag": node_names["hy2_direct_v4"], "server": public_ip, "server_port": hy2_port,
-        "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+        "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": skip_cert_verify}
     }
     hy2_sb_r = {
         "type": "hysteria2", "tag": node_names["hy2_resi_v4"], "server": public_ip, "server_port": hy2_port,
-        "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+        "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": skip_cert_verify}
     }
     if hy2_hop_ports:
         hop_ranges = []
@@ -630,23 +673,23 @@ def generate_subscriptions(nodes_data, output_dir):
     sb_outbounds_list.append({
         "type": "tuic", "tag": node_names["tuic_direct_v4"], "server": public_ip, "server_port": tuic_port,
         "uuid": direct_uuid, "password": short_id, "congestion_control": "bbr",
-        "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": bool(not domain)}
+        "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": skip_cert_verify}
     })
     sb_outbounds_list.append({
         "type": "tuic", "tag": node_names["tuic_resi_v4"], "server": public_ip, "server_port": tuic_port,
         "uuid": resi_uuid, "password": short_id, "congestion_control": "bbr",
-        "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": bool(not domain)}
+        "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": skip_cert_verify}
     })
 
     # AnyTLS (仅在服务端开启 AnyTLS 监听时生成)
     if anytls_port and int(anytls_port) > 0:
         sb_outbounds_list.append({
             "type": "anytls", "tag": node_names["anytls_direct_v4"], "server": public_ip, "server_port": anytls_port,
-            "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+            "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": skip_cert_verify}
         })
         sb_outbounds_list.append({
             "type": "anytls", "tag": node_names["anytls_resi_v4"], "server": public_ip, "server_port": anytls_port,
-            "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+            "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": skip_cert_verify}
         })
 
     # VMess (直连 8445 明文传输，由 VMess AEAD 内部加密)
@@ -686,11 +729,11 @@ def generate_subscriptions(nodes_data, output_dir):
         # Hysteria 2 IPv6 (直连 + 住宅家宽)
         hy2_sb_d_v6 = {
             "type": "hysteria2", "tag": node_names["hy2_direct_v6"], "server": public_ipv6, "server_port": hy2_port,
-            "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+            "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": skip_cert_verify}
         }
         hy2_sb_r_v6 = {
             "type": "hysteria2", "tag": node_names["hy2_resi_v6"], "server": public_ipv6, "server_port": hy2_port,
-            "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+            "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": skip_cert_verify}
         }
         if hy2_hop_ports and hop_ranges:
             hy2_sb_d_v6["server_ports"] = hop_ranges
@@ -704,23 +747,23 @@ def generate_subscriptions(nodes_data, output_dir):
         sb_outbounds_list.append({
             "type": "tuic", "tag": node_names["tuic_direct_v6"], "server": public_ipv6, "server_port": tuic_port,
             "uuid": direct_uuid, "password": short_id, "congestion_control": "bbr",
-            "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": bool(not domain)}
+            "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": skip_cert_verify}
         })
         sb_outbounds_list.append({
             "type": "tuic", "tag": node_names["tuic_resi_v6"], "server": public_ipv6, "server_port": tuic_port,
             "uuid": resi_uuid, "password": short_id, "congestion_control": "bbr",
-            "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": bool(not domain)}
+            "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": skip_cert_verify}
         })
 
         # AnyTLS IPv6 (直连 + 住宅家宽)
         if anytls_port and int(anytls_port) > 0:
             sb_outbounds_list.append({
                 "type": "anytls", "tag": node_names["anytls_direct_v6"], "server": public_ipv6, "server_port": anytls_port,
-                "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+                "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": skip_cert_verify}
             })
             sb_outbounds_list.append({
                 "type": "anytls", "tag": node_names["anytls_resi_v6"], "server": public_ipv6, "server_port": anytls_port,
-                "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+                "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": skip_cert_verify}
             })
 
         # VMess xHTTP IPv6 (直连 + 住宅家宽)

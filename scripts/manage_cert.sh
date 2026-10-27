@@ -117,20 +117,25 @@ view_cert_details() {
 }
 
 apply_new_cert_http() {
+    local target_domain="${1:-}"
+    local target_ca="${2:-}"
     ensure_acme_sh
     local pub_ip
     pub_ip=$(get_public_ip)
     local cur_domain
     cur_domain=$(get_bound_domain)
 
-    echo -e "\n${BOLD}${BLUE}【申请正式域名 SSL 证书 - HTTP-01 验证模式】${PLAIN}"
-    echo -e "说明：此模式将在本机 80 端口验证域名所有权，支持 Let's Encrypt / ZeroSSL。"
-    echo -e "要求：必须提前将域名 A / AAAA 记录解析到本 VPS 公网 IP (${GREEN}${pub_ip}${PLAIN})！"
-    echo "----------------------------------------------------------"
+    if [ -z "$target_domain" ]; then
+        echo -e "\n${BOLD}${BLUE}【申请正式域名 SSL 证书 - HTTP-01 验证模式】${PLAIN}"
+        echo -e "说明：此模式将在本机 80 端口验证域名所有权，支持 Let's Encrypt / ZeroSSL。"
+        echo -e "要求：必须提前将域名 A / AAAA 记录解析到本 VPS 公网 IP (${GREEN}${pub_ip}${PLAIN})！"
+        echo "----------------------------------------------------------"
 
-    read -r -p "请输入您要绑定的完整域名 (例如: vpn.example.com) [${cur_domain}]: " input_domain
-    local domain="${input_domain:-$cur_domain}"
-    domain=$(echo "$domain" | tr -d '[:space:]')
+        read -r -p "请输入您要绑定的完整域名 (例如: vpn.example.com) [${cur_domain}]: " input_domain
+        target_domain="${input_domain:-$cur_domain}"
+    fi
+    local domain
+    domain=$(echo "$target_domain" | tr -d '[:space:]')
     if [ -z "$domain" ]; then
         echo -e "${RED}域名不能为空！${PLAIN}"
         return 1
@@ -144,21 +149,26 @@ apply_new_cert_http() {
             echo -e "${GREEN}  -> DNS 解析正常！${domain} -> ${resolved_ip}${PLAIN}"
         else
             echo -e "${YELLOW}警告: 域名 ${domain} 解析到的 IP (${resolved_ip}) 与本机公网 IP (${pub_ip}) 不一致！${PLAIN}"
-            read -r -p "确定仍要继续申请吗？可能导致 ACME 验证失败 [y/N]: " force_go
-            if [[ ! "$force_go" =~ ^[yY]$ ]]; then
-                echo "已取消。"
-                return 1
+            if [ -t 0 ] && [ -z "${1:-}" ]; then
+                read -r -p "确定仍要继续申请吗？可能导致 ACME 验证失败 [y/N]: " force_go
+                if [[ ! "$force_go" =~ ^[yY]$ ]]; then
+                    echo "已取消。"
+                    return 1
+                fi
             fi
         fi
     else
         echo -e "${YELLOW}警告: 无法解析域名 ${domain}，请确认 DNS 是否已生效。${PLAIN}"
     fi
 
-    echo -e "\n请选择证书颁发机构 (CA):"
-    echo -e "  ${GREEN}[1]${PLAIN} Let's Encrypt (推荐，开箱即用无阻碍)"
-    echo -e "  ${GREEN}[2]${PLAIN} ZeroSSL"
-    echo -e "  ${GREEN}[3]${PLAIN} Buypass (180天较长有效期)"
-    read -r -p "请选择 CA [1-3, 默认 1]: " ca_choice
+    local ca_choice="${target_ca:-1}"
+    if [ -z "$target_ca" ] && [ -t 0 ]; then
+        echo -e "\n请选择证书颁发机构 (CA):"
+        echo -e "  ${GREEN}[1]${PLAIN} Let's Encrypt (推荐，开箱即用无阻碍)"
+        echo -e "  ${GREEN}[2]${PLAIN} ZeroSSL"
+        echo -e "  ${GREEN}[3]${PLAIN} Buypass (180天较长有效期)"
+        read -r -p "请选择 CA [1-3, 默认 1]: " ca_choice
+    fi
     local ca_server="letsencrypt"
     case "$ca_choice" in
         2) ca_server="zerossl" ;;
@@ -172,6 +182,9 @@ apply_new_cert_http() {
     fi
     if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
         ufw allow 80/tcp >/dev/null 2>&1 || true
+    fi
+    if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+        firewall-cmd --add-port=80/tcp >/dev/null 2>&1 || true
     fi
 
     local acme_bin="$HOME/.acme.sh/acme.sh"
@@ -435,7 +448,8 @@ if [ $# -gt 0 ]; then
         renew) force_renew_cert ;;
         reset) reset_ip_self_signed ;;
         dns) apply_new_cert_dns "${2:-}" ;;
-        *) apply_new_cert_http ;;
+        http) apply_new_cert_http "${2:-}" "${3:-1}" ;;
+        *) apply_new_cert_http "${1:-}" "${2:-1}" ;;
     esac
 else
     interactive_cert_menu
