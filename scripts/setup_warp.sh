@@ -117,7 +117,11 @@ try:
         res = json.loads(resp.read().decode('utf-8'))
         cfg = res.get("config", {})
         v4 = cfg.get("interface", {}).get("addresses", {}).get("v4", "172.16.0.2/32")
+        if v4 and "/" not in v4:
+            v4 += "/32"
         v6 = cfg.get("interface", {}).get("addresses", {}).get("v6", "")
+        if v6 and "/" not in v6:
+            v6 += "/128"
         peer = cfg.get("peers", [{}])[0]
         peer_pub = peer.get("public_key", "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=")
         peer_endpoint = peer.get("endpoint", {}).get("host", "162.159.192.1:2408")
@@ -212,9 +216,16 @@ if mode != "off" and os.path.exists(warp_file):
     server_host = ep.split(":")[0] if ":" in ep else ep
     server_port = int(ep.split(":")[1]) if ":" in ep else 2408
 
-    addrs = [warp.get("v4", "172.16.0.2/32")]
-    if warp.get("v6"):
-        addrs.append(warp.get("v6"))
+    v4_val = warp.get("v4", "172.16.0.2/32")
+    if v4_val and "/" not in v4_val:
+        v4_val += "/32"
+    addrs = [v4_val]
+
+    v6_val = warp.get("v6", "")
+    if v6_val:
+        if "/" not in v6_val:
+            v6_val += "/128"
+        addrs.append(v6_val)
 
     peer_dict = {
         "address": server_host,
