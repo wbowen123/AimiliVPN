@@ -93,6 +93,7 @@ check_port_listen "tcp" "8445"  "VMess-xHTTP" || true
 check_port_listen "tcp" "8446"  "VMess-WS" || true
 check_port_listen "tcp" "8443"  "Nginx HTTPS 管理后台" || true
 check_port_listen "tcp" "18443" "Nginx 全生态订阅入口" || true
+check_port_listen "tcp" "18080" "Nginx HTTP 免证书纯净订阅入口" || true
 check_port_listen "tcp" "8500"  "Aimili SOCKS5 住宅网桥 (127.0.0.1)" || true
 check_port_listen "tcp" "8501"  "Aimili Python 内部面板" || true
 
@@ -119,7 +120,7 @@ fi
 
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
     echo -e "  * UFW 防火墙状态: ${YELLOW}已启用 (Active)${PLAIN}"
-    for p in 443 8443 8444 8445 8446 18443; do
+    for p in 443 8443 8444 8445 8446 18443 18080; do
         if ufw status 2>/dev/null | grep -qE "^${p}\b.*ALLOW"; then
             echo -e "    - 端口 ${p}: ${GREEN}ALLOW${PLAIN}"
         else

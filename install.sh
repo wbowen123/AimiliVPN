@@ -13,7 +13,7 @@ BOLD='\033[1m'
 # 系统防火墙（甲骨文镜像自带 iptables INPUT REJECT、ufw、firewalld）放行 AimiliVPN 自己的对外端口：
 # 8443（管理后台）、80（Let's Encrypt HTTP-01）、443（Reality TCP & Hy2 UDP）、8444（AnyTLS TCP）、8445/8446（VMess TCP）、18443（订阅服务）。
 # UDP 端口：443（Hysteria 2）、8443（TUIC v5）、40000:50000（端口跳跃）。8500/8501 只听 127.0.0.1，不放行。
-AIMILI_FW_PORTS="${AIMILI_FW_PORTS:-8443 80 443 8444 8445 8446 18443}"
+AIMILI_FW_PORTS="${AIMILI_FW_PORTS:-8443 80 443 8444 8445 8446 18443 18080}"
 AIMILI_FW_UDP_PORTS="${AIMILI_FW_UDP_PORTS:-443 8443 40000:50000}"
 AIMILI_FW_ADDED="${AIMILI_FW_ADDED:-/etc/aimilivpn-fw.added}"
 aimili_fw_persist() {
@@ -1434,6 +1434,7 @@ aimili_print_summary() {
             echo -e "  * 🐱 Clash Meta 订阅:   ${BLUE}https://${sub_host}:18443/clash.yaml${PLAIN}"
             echo -e "  * 📦 Sing-box 原生订阅: ${BLUE}https://${sub_host}:18443/singbox.json${PLAIN}"
             echo -e "  * 📄 Plaintext 节点:    ${BLUE}https://${sub_host}:18443/nodes.txt${PLAIN}"
+            echo -e "  * ⚡ 免证书 HTTP 订阅:  ${BLUE}http://${sub_host}:18080/sub.txt${PLAIN} (Clash: ${BLUE}http://${sub_host}:18080/clash.yaml${PLAIN})"
             echo -e "  * 备用 HTTPS 订阅:      ${BLUE}https://${sub_host}:8443/sub/sub.txt${PLAIN}"
             if [ -f "${INSTALL_DIR}/scripts/print_qr.py" ]; then
                 python3 "${INSTALL_DIR}/scripts/print_qr.py" "https://${sub_host}:18443/sub.txt" "全生态聚合订阅二维码 (手机扫码一键导入)"

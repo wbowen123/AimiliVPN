@@ -681,9 +681,9 @@ if command -v nginx >/dev/null 2>&1; then
     fi
 fi
 
-# 14. 防火墙端口放行 (放行 TCP: 443, 8443, 8444, 8445, 8446, 18443; UDP: 443, 8443 及 40000-50000 跳跃端口)
+# 14. 防火墙端口放行 (放行 TCP: 443, 8443, 8444, 8445, 8446, 18443, 18080; UDP: 443, 8443 及 40000-50000 跳跃端口)
 if command -v iptables >/dev/null 2>&1; then
-    for p in 443 8443 8444 8445 8446 18443; do
+    for p in 443 8443 8444 8445 8446 18443 18080; do
         iptables -C INPUT -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || \
         iptables -I INPUT 1 -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || true
     done
@@ -701,12 +701,13 @@ if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: a
     ufw allow 8445/tcp comment aimilivpn >/dev/null 2>&1 || true
     ufw allow 8446/tcp comment aimilivpn >/dev/null 2>&1 || true
     ufw allow 18443/tcp comment aimilivpn >/dev/null 2>&1 || true
+    ufw allow 18080/tcp comment aimilivpn >/dev/null 2>&1 || true
     ufw allow 443/udp comment aimilivpn >/dev/null 2>&1 || true
     ufw allow 8443/udp comment aimilivpn >/dev/null 2>&1 || true
     ufw allow 40000:50000/udp comment aimilivpn >/dev/null 2>&1 || true
 fi
 if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-    firewall-cmd --permanent --add-port={443,8443,8444,8445,8446,18443}/tcp >/dev/null 2>&1 || true
+    firewall-cmd --permanent --add-port={443,8443,8444,8445,8446,18443,18080}/tcp >/dev/null 2>&1 || true
     firewall-cmd --permanent --add-port={443,8443}/udp >/dev/null 2>&1 || true
     firewall-cmd --permanent --add-port=40000-50000/udp >/dev/null 2>&1 || true
     firewall-cmd --reload >/dev/null 2>&1 || true
@@ -716,7 +717,7 @@ if command -v ip6tables >/dev/null 2>&1; then
         ip6tables -t nat -C PREROUTING -p udp --dport 40000:50000 -j REDIRECT --to-ports 443 2>/dev/null || \
         ip6tables -t nat -A PREROUTING -p udp --dport 40000:50000 -j REDIRECT --to-ports 443 2>/dev/null || true
     fi
-    for p in 443 8443 8444 8445 8446 18443; do
+    for p in 443 8443 8444 8445 8446 18443 18080; do
         ip6tables -C INPUT -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || \
         ip6tables -I INPUT 1 -p tcp --dport "$p" -m comment --comment aimilivpn -j ACCEPT >/dev/null 2>&1 || true
     done

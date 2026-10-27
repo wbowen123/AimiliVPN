@@ -186,10 +186,17 @@ def get_subscription_data():
         "resi_egress_type": data.get("resi_egress_type", "local"),
         "resi_host": data.get("resi_host", "127.0.0.1"),
         "resi_port": data.get("resi_port", 8500),
+        "public_ipv6": data.get("public_ipv6", ""),
         "sub_url_18443": f"https://{sub_host}:18443/sub.txt",
         "clash_url_18443": f"https://{sub_host}:18443/clash.yaml",
         "singbox_url_18443": f"https://{sub_host}:18443/singbox.json",
         "nodes_txt_url": f"https://{sub_host}:18443/nodes.txt",
+        "sub_url_18080": f"http://{sub_host}:18080/sub.txt",
+        "clash_url_18080": f"http://{sub_host}:18080/clash.yaml",
+        "singbox_url_18080": f"http://{sub_host}:18080/singbox.json",
+        "sub_url_v6_18080": f"http://[{data.get('public_ipv6')}]:18080/sub.txt" if data.get("public_ipv6") else "",
+        "clash_url_v6_18080": f"http://[{data.get('public_ipv6')}]:18080/clash.yaml" if data.get("public_ipv6") else "",
+        "sub_url_v6_18443": f"https://[{data.get('public_ipv6')}]:18443/sub.txt" if data.get("public_ipv6") else "",
         "sub_url_8443": f"https://{sub_host}:8443/sub/sub.txt",
         "short_id": data.get("short_id", ""),
         "public_key": data.get("public_key", ""),
@@ -270,7 +277,14 @@ def print_subscription_card():
     print(f"  * {C_GREEN}📦 Sing-box 原生 1.10+ JSON:{C_RESET} {C_BLUE}{C_BOLD}{sub['singbox_url_18443']}{C_RESET}")
     print("    (内置 Smart-DNS 分流与原生路由规则，开箱即用无需转换)")
     print(f"  * {C_GREEN}📄 Plaintext 原始节点列表:{C_RESET}  {C_BLUE}{sub['nodes_txt_url']}{C_RESET}")
-    print(f"  * 备用订阅地址:             {C_BLUE}{sub['sub_url_8443']}{C_RESET}")
+    print(f"  * {C_YELLOW}⚡ 免证书纯净 HTTP 订阅:{C_RESET}     {C_BLUE}{sub['sub_url_18080']}{C_RESET} (Clash: {sub['clash_url_18080']})")
+    print(f"    (若客户端提示自签名 SSL 证书错误，直接使用此 18080 HTTP 端口免证书秒拉)")
+
+    if sub.get("sub_url_v6_18080"):
+        print(f"\n{C_BOLD}【1-B. IPv6 专属极速订阅 (针对 IPv4 线路受阻/纯 IPv6 宽带网络)】{C_RESET}")
+        print(f"  * {C_GREEN}🌐 IPv6 Base64 订阅 (HTTP 免证书):{C_RESET}  {C_BLUE}{C_BOLD}{sub['sub_url_v6_18080']}{C_RESET}")
+        print(f"  * {C_GREEN}🐱 IPv6 Clash Meta (HTTP 免证书):{C_RESET}  {C_BLUE}{C_BOLD}{sub['clash_url_v6_18080']}{C_RESET}")
+        print(f"  * 🔒 IPv6 HTTPS 备用订阅:{C_RESET}             {C_BLUE}{sub['sub_url_v6_18443']}{C_RESET}")
 
     # 渲染终端 ASCII 二维码 (手机直接扫码)
     print_terminal_qr(sub["sub_url_18443"], "全生态聚合订阅二维码 (手机小火箭 / Sing-box 扫码一键导入)")

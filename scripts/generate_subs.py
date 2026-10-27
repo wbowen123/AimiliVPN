@@ -147,11 +147,17 @@ def generate_subscriptions(nodes_data, output_dir):
         "anytls_resi_v4":  "🌐 [住宅-家宽·IPv4] AnyTLS【TCP-Padding·特征防探测家宽】",
         "vmess_direct_v4": "☁️ [直连-极速·IPv4] VMess-xHTTP【H2/H3-分块·分段防审查】",
         "vmess_resi_v4":   "🛋️ [住宅-家宽·IPv4] VMess-xHTTP【H2/H3-分块·动态家宽流】",
-        # IPv6 原生直连 (若检测到 IPv6)
+        # IPv6 原生直连与住宅家宽 (若检测到 IPv6)
         "vless_direct_v6": "🚀 [直连-极速·IPv6] VLESS-Reality【TCP-Vision·原生IPv6】",
+        "vless_resi_v6":   "🏠 [住宅-家宽·IPv6] VLESS-Reality【TCP-Vision·Aimili动态家宽】",
         "hy2_direct_v6":   "🌪️ [直连-极速·IPv6] Hysteria 2【H3-UDP-Brutal·IPv6暴力加速】",
+        "hy2_resi_v6":     "🏘️ [住宅-家宽·IPv6] Hysteria 2【H3-UDP-Brutal·恶劣线路家宽加速】",
         "tuic_direct_v6":  "⚡ [直连-极速·IPv6] TUIC v5【H3-QUIC-0RTT·IPv6秒开】",
+        "tuic_resi_v6":    "🏡 [住宅-家宽·IPv6] TUIC v5【H3-QUIC-0RTT·晚高峰家宽流媒体】",
+        "anytls_direct_v6":"🛡️ [直连-极速·IPv6] AnyTLS【TCP-Padding·动态包长防探测】",
+        "anytls_resi_v6":  "🌐 [住宅-家宽·IPv6] AnyTLS【TCP-Padding·特征防探测家宽】",
         "vmess_direct_v6": "☁️ [直连-极速·IPv6] VMess-xHTTP【H2/H3-分块·原生IPv6】",
+        "vmess_resi_v6":   "🛋️ [住宅-家宽·IPv6] VMess-xHTTP【H2/H3-分块·动态家宽流】",
         # Cloudflare CDN / Argo 穿透节点 (明确标注优选 IP 赋能)
         "vmess_argo_v4":   "⛅ [CDN-优选IP·IPv4] VMess-xHTTP-Argo【Anycast优选·Cloudflare全球破墙】",
         "vmess_cdn_v4":    "⛅ [CDN-小黄云·IPv4] VMess-xHTTP【Cloudflare-CDN·分块免流破墙】",
@@ -258,51 +264,90 @@ def generate_subscriptions(nodes_data, output_dir):
     })
 
     # ==========================================================================
-    # B. 生成 IPv6 原生直连节点 (若宿主机存在 IPv6)
+    # B. 生成 IPv6 原生直连与住宅家宽节点 (若宿主机存在 IPv6)
     # ==========================================================================
     if public_ipv6:
         ip6_url_host = f"[{public_ipv6}]"
 
-        # B1. VLESS Reality IPv6
+        # B1. VLESS Reality IPv6 (直连 + 住宅家宽)
         vless_d_v6 = f"vless://{direct_uuid}@{ip6_url_host}:{vless_port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={camouflage_sni}&fp=chrome&pbk={public_key}&sid={short_id}&type=tcp#{urllib.parse.quote(node_names['vless_direct_v6'])}"
-        links.append(vless_d_v6)
+        vless_r_v6 = f"vless://{resi_uuid}@{ip6_url_host}:{vless_port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={camouflage_sni}&fp=chrome&pbk={public_key}&sid={short_id}&type=tcp#{urllib.parse.quote(node_names['vless_resi_v6'])}"
+        links.extend([vless_d_v6, vless_r_v6])
         clash_proxies.append({
             "name": node_names["vless_direct_v6"], "type": "vless", "server": public_ipv6, "port": vless_port,
             "uuid": direct_uuid, "network": "tcp", "tls": True, "udp": True, "flow": "xtls-rprx-vision",
             "servername": camouflage_sni, "reality-opts": {"public-key": public_key, "short-id": short_id},
             "client-fingerprint": "chrome"
         })
+        clash_proxies.append({
+            "name": node_names["vless_resi_v6"], "type": "vless", "server": public_ipv6, "port": vless_port,
+            "uuid": resi_uuid, "network": "tcp", "tls": True, "udp": True, "flow": "xtls-rprx-vision",
+            "servername": camouflage_sni, "reality-opts": {"public-key": public_key, "short-id": short_id},
+            "client-fingerprint": "chrome"
+        })
 
-        # B2. Hysteria 2 IPv6
+        # B2. Hysteria 2 IPv6 (直连 + 住宅家宽)
         hy2_d_v6 = f"hysteria2://{direct_uuid}@{ip6_url_host}:{hy2_port}?mport={mport_val}{sni_param}{obfs_param}#{urllib.parse.quote(node_names['hy2_direct_v6'])}"
-        links.append(hy2_d_v6)
+        hy2_r_v6 = f"hysteria2://{resi_uuid}@{ip6_url_host}:{hy2_port}?mport={mport_val}{sni_param}{obfs_param}#{urllib.parse.quote(node_names['hy2_resi_v6'])}"
+        links.extend([hy2_d_v6, hy2_r_v6])
         hy2_p_d_v6 = {
             "name": node_names["hy2_direct_v6"], "type": "hysteria2", "server": public_ipv6, "port": hy2_port,
             "password": direct_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
         }
-        if hy2_hop_ports: hy2_p_d_v6["ports"] = str(hy2_hop_ports)
-        if hy2_obfs: hy2_p_d_v6["obfs"] = "salamander"; hy2_p_d_v6["obfs-password"] = hy2_obfs
-        clash_proxies.append(hy2_p_d_v6)
+        hy2_p_r_v6 = {
+            "name": node_names["hy2_resi_v6"], "type": "hysteria2", "server": public_ipv6, "port": hy2_port,
+            "password": resi_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": bool(not domain)
+        }
+        if hy2_hop_ports:
+            hy2_p_d_v6["ports"] = str(hy2_hop_ports)
+            hy2_p_r_v6["ports"] = str(hy2_hop_ports)
+        if hy2_obfs:
+            hy2_p_d_v6["obfs"] = "salamander"; hy2_p_d_v6["obfs-password"] = hy2_obfs
+            hy2_p_r_v6["obfs"] = "salamander"; hy2_p_r_v6["obfs-password"] = hy2_obfs
+        clash_proxies.extend([hy2_p_d_v6, hy2_p_r_v6])
 
-        # B3. TUIC v5 IPv6
+        # B3. TUIC v5 IPv6 (直连 + 住宅家宽)
         tuic_d_v6 = f"tuic://{direct_uuid}:{short_id}@{ip6_url_host}:{tuic_port}?congestion_control=bbr&alpn=h3&sni={tuic_sni}&allow_insecure={insec_flag}#{urllib.parse.quote(node_names['tuic_direct_v6'])}"
-        links.append(tuic_d_v6)
+        tuic_r_v6 = f"tuic://{resi_uuid}:{short_id}@{ip6_url_host}:{tuic_port}?congestion_control=bbr&alpn=h3&sni={tuic_sni}&allow_insecure={insec_flag}#{urllib.parse.quote(node_names['tuic_resi_v6'])}"
+        links.extend([tuic_d_v6, tuic_r_v6])
         clash_proxies.append({
             "name": node_names["tuic_direct_v6"], "type": "tuic", "server": public_ipv6, "port": tuic_port,
             "uuid": direct_uuid, "password": short_id, "alpn": ["h3"], "congestion-controller": "bbr",
             "sni": tuic_sni, "skip-cert-verify": bool(not domain)
         })
+        clash_proxies.append({
+            "name": node_names["tuic_resi_v6"], "type": "tuic", "server": public_ipv6, "port": tuic_port,
+            "uuid": resi_uuid, "password": short_id, "alpn": ["h3"], "congestion-controller": "bbr",
+            "sni": tuic_sni, "skip-cert-verify": bool(not domain)
+        })
 
-        # B4. VMess xHTTP IPv6 (直连 8445 明文传输，由 VMess AEAD 内部加密)
+        # B4. AnyTLS IPv6 (直连 + 住宅家宽，仅在开启 AnyTLS 时生成)
+        if anytls_port and int(anytls_port) > 0:
+            anytls_d_v6 = f"anytls://{direct_uuid}@{ip6_url_host}:{anytls_port}?sni={tuic_sni}&insecure={insec_flag}#{urllib.parse.quote(node_names['anytls_direct_v6'])}"
+            anytls_r_v6 = f"anytls://{resi_uuid}@{ip6_url_host}:{anytls_port}?sni={tuic_sni}&insecure={insec_flag}#{urllib.parse.quote(node_names['anytls_resi_v6'])}"
+            links.extend([anytls_d_v6, anytls_r_v6])
+
+        # B5. VMess xHTTP IPv6 (直连 + 住宅家宽)
         vmess_obj_d_v6 = {
             "v": "2", "ps": node_names["vmess_direct_v6"], "add": public_ipv6, "port": vmess_port,
             "id": direct_uuid, "aid": 0, "net": "http", "type": "none", "host": host,
             "path": "/vmess", "tls": ""
         }
+        vmess_obj_r_v6 = {
+            "v": "2", "ps": node_names["vmess_resi_v6"], "add": public_ipv6, "port": vmess_port,
+            "id": resi_uuid, "aid": 0, "net": "http", "type": "none", "host": host,
+            "path": "/vmess", "tls": ""
+        }
         links.append("vmess://" + base64.b64encode(json.dumps(vmess_obj_d_v6).encode("utf-8")).decode("utf-8"))
+        links.append("vmess://" + base64.b64encode(json.dumps(vmess_obj_r_v6).encode("utf-8")).decode("utf-8"))
         clash_proxies.append({
             "name": node_names["vmess_direct_v6"], "type": "vmess", "server": public_ipv6, "port": vmess_port,
             "uuid": direct_uuid, "alterId": 0, "cipher": "auto", "network": "http",
+            "http-opts": {"path": ["/vmess"], "headers": {"Host": [host]}}, "tls": False, "skip-cert-verify": False
+        })
+        clash_proxies.append({
+            "name": node_names["vmess_resi_v6"], "type": "vmess", "server": public_ipv6, "port": vmess_port,
+            "uuid": resi_uuid, "alterId": 0, "cipher": "auto", "network": "http",
             "http-opts": {"path": ["/vmess"], "headers": {"Host": [host]}}, "tls": False, "skip-cert-verify": False
         })
 
@@ -618,8 +663,9 @@ def generate_subscriptions(nodes_data, output_dir):
         "tls": {"enabled": False}
     })
 
-    # IPv6 原生直连节点追加至 Singbox 客户端出站 (保证双栈订阅矩阵 100% 对齐)
+    # IPv6 原生直连与住宅家宽节点追加至 Singbox 客户端出站 (保证双栈订阅矩阵 100% 对齐)
     if public_ipv6:
+        # VLESS Reality IPv6 (直连 + 住宅家宽)
         sb_outbounds_list.append({
             "type": "vless", "tag": node_names["vless_direct_v6"], "server": public_ipv6, "server_port": vless_port,
             "uuid": direct_uuid, "flow": "xtls-rprx-vision", "network": "tcp",
@@ -628,24 +674,65 @@ def generate_subscriptions(nodes_data, output_dir):
                 "utls": {"enabled": True, "fingerprint": "chrome"}
             }
         })
-        hy2_sb_v6 = {
+        sb_outbounds_list.append({
+            "type": "vless", "tag": node_names["vless_resi_v6"], "server": public_ipv6, "server_port": vless_port,
+            "uuid": resi_uuid, "flow": "xtls-rprx-vision", "network": "tcp",
+            "tls": {
+                "enabled": True, "server_name": camouflage_sni, "reality": {"enabled": True, "public_key": public_key, "short_id": short_id},
+                "utls": {"enabled": True, "fingerprint": "chrome"}
+            }
+        })
+
+        # Hysteria 2 IPv6 (直连 + 住宅家宽)
+        hy2_sb_d_v6 = {
             "type": "hysteria2", "tag": node_names["hy2_direct_v6"], "server": public_ipv6, "server_port": hy2_port,
             "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
         }
+        hy2_sb_r_v6 = {
+            "type": "hysteria2", "tag": node_names["hy2_resi_v6"], "server": public_ipv6, "server_port": hy2_port,
+            "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+        }
         if hy2_hop_ports and hop_ranges:
-            hy2_sb_v6["server_ports"] = hop_ranges
+            hy2_sb_d_v6["server_ports"] = hop_ranges
+            hy2_sb_r_v6["server_ports"] = hop_ranges
         if hy2_obfs:
-            hy2_sb_v6["obfs"] = {"type": "salamander", "password": hy2_obfs}
-        sb_outbounds_list.append(hy2_sb_v6)
+            hy2_sb_d_v6["obfs"] = {"type": "salamander", "password": hy2_obfs}
+            hy2_sb_r_v6["obfs"] = {"type": "salamander", "password": hy2_obfs}
+        sb_outbounds_list.extend([hy2_sb_d_v6, hy2_sb_r_v6])
 
+        # TUIC v5 IPv6 (直连 + 住宅家宽)
         sb_outbounds_list.append({
             "type": "tuic", "tag": node_names["tuic_direct_v6"], "server": public_ipv6, "server_port": tuic_port,
             "uuid": direct_uuid, "password": short_id, "congestion_control": "bbr",
             "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": bool(not domain)}
         })
         sb_outbounds_list.append({
+            "type": "tuic", "tag": node_names["tuic_resi_v6"], "server": public_ipv6, "server_port": tuic_port,
+            "uuid": resi_uuid, "password": short_id, "congestion_control": "bbr",
+            "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": bool(not domain)}
+        })
+
+        # AnyTLS IPv6 (直连 + 住宅家宽)
+        if anytls_port and int(anytls_port) > 0:
+            sb_outbounds_list.append({
+                "type": "anytls", "tag": node_names["anytls_direct_v6"], "server": public_ipv6, "server_port": anytls_port,
+                "password": direct_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+            })
+            sb_outbounds_list.append({
+                "type": "anytls", "tag": node_names["anytls_resi_v6"], "server": public_ipv6, "server_port": anytls_port,
+                "password": resi_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": bool(not domain)}
+            })
+
+        # VMess xHTTP IPv6 (直连 + 住宅家宽)
+        sb_outbounds_list.append({
             "type": "vmess", "tag": node_names["vmess_direct_v6"], "server": public_ipv6, "server_port": vmess_port,
             "uuid": direct_uuid, "security": "auto",
+            "transport": {"type": "http", "path": "/vmess", "host": [host]},
+            "tls": {"enabled": False}
+        })
+        sb_outbounds_list.append({
+            "type": "vmess", "tag": node_names["vmess_resi_v6"], "server": public_ipv6, "server_port": vmess_port,
+            "uuid": resi_uuid, "security": "auto",
             "transport": {"type": "http", "path": "/vmess", "host": [host]},
             "tls": {"enabled": False}
         })
