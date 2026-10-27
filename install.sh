@@ -688,11 +688,17 @@ if [ "${AIMILI_FROM_JIUHEYI:-}" != "1" ] && [ -t 0 ]; then
         echo -e "  * 作用说明: 若本机公网 IPv4 受阻或无公网 IP，可通过 Cloudflare 官方 Argo 隧道将流量安全穿透至全球 Anycast 网络。"
         read -r -p "是否配置 Cloudflare Argo 固定隧道 (Named Tunnel)？[y/N，默认 N]: " DO_ARGO_TUNNEL
         if [[ "${DO_ARGO_TUNNEL:-n}" =~ ^[yY]$ ]]; then
-            read -r -p "请输入 Cloudflare 隧道 Token (例如 eyJhIjoi...): " ARGO_TUNNEL_TOKEN
-            ARGO_TUNNEL_TOKEN=$(echo "${ARGO_TUNNEL_TOKEN:-}" | tr -d '[:space:]')
-            read -r -p "请输入 Argo 穿透域名 (例如 argo.example.com): " ARGO_TUNNEL_DOMAIN
+            echo -e "  💡 说明: 可直接粘贴 Token 字符串，也可整行粘贴 Cloudflare 后台给出的 'cloudflared service install <token>' 命令"
+            read -r -p "请输入 Cloudflare 隧道 Token: " ARGO_TUNNEL_TOKEN
+            ARGO_TUNNEL_TOKEN=$(echo "${ARGO_TUNNEL_TOKEN:-}" | sed -E 's/^[[:space:]]*cloudflared[[:space:]]+service[[:space:]]+install[[:space:]]+//' | tr -d '[:space:]')
+            read -r -p "请输入 Argo 穿透域名 (例如 us.moyii.xyz): " ARGO_TUNNEL_DOMAIN
             ARGO_TUNNEL_DOMAIN=$(echo "${ARGO_TUNNEL_DOMAIN:-}" | tr -d '[:space:]')
-            export ARGO_TUNNEL_TOKEN ARGO_TUNNEL_DOMAIN
+            echo -e "  * 本地回源端口选择 (务必与 Cloudflare Zero Trust -> Public Hostnames 填写的 Service URL 保持一致):"
+            echo -e "    - 8445: VMess-xHTTP 极速穿透 (路径 /vmess)"
+            echo -e "    - 8446: VMess-WebSocket 兼容模式 (路径 /vmess-ws)"
+            read -r -p "请输入本地回源端口 [8445/8446，默认 8445]: " ARGO_TUNNEL_PORT
+            ARGO_TUNNEL_PORT="${ARGO_TUNNEL_PORT:-8445}"
+            export ARGO_TUNNEL_TOKEN ARGO_TUNNEL_DOMAIN ARGO_TUNNEL_PORT
         fi
     fi
 
@@ -1317,6 +1323,11 @@ if [ -n "${AIMILIVPN_DOMAIN:-}" ]; then
             echo -e "${YELLOW}待域名 DNS 解析彻底全球生效并放开 80 端口后，您可随时在终端运行 ml cert 一键补办。${PLAIN}"
         fi
     fi
+fi
+
+if [ -n "${ARGO_TUNNEL_TOKEN:-}" ]; then
+    echo -e "\n${YELLOW}正在初始化并启动 Cloudflare Argo 固定隧道服务...${PLAIN}"
+    bash "${INSTALL_DIR}/scripts/setup_argo.sh" token "${ARGO_TUNNEL_TOKEN}" "${ARGO_TUNNEL_DOMAIN:-}" "${ARGO_TUNNEL_PORT:-8445}" || true
 fi
 
 if [ "${INSTALL_RESI:-y}" = "y" ]; then
