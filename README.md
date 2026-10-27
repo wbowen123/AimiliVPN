@@ -258,6 +258,27 @@ ml singbox  # Sing-box 核心管理（start/stop/restart/logs/status）
 
 ---
 
+### 10. 致谢与开源项目鸣谢 (Acknowledgments & Open Source Credits)
+
+本项目由衷感谢全球开源社区与网络工程先锋项目的杰出贡献，AimiliVPN 的诞生与演进深度吸收、调用或借鉴了以下优秀开源项目与技术实践（排名不分先后）：
+
+| 开源项目 / 仓库 | 机构 / 作者 / 链接 | 核心贡献与本项目调用/借鉴说明 |
+| :--- | :--- | :--- |
+| **Sing-box** | [SagerNet/sing-box](https://github.com/SagerNet/sing-box) | 本项目核心代理平台底座。提供了现代化的 VLESS-Reality、Hysteria 2、TUIC v5、AnyTLS、VMess 协议栈、高性能规则引擎与原生 WireGuard 用户态出站能力。 |
+| **Cloudflare cloudflared & WARP** | [cloudflare/cloudflared](https://github.com/cloudflare/cloudflared) | Cloudflare 官方零信任 Named Tunnel 隧道客户端与全球 Anycast 边缘网络，为本项目提供了 IPv4 被封救急、免公网 IP 穿透与 WARP 智能流媒体/AI 解锁方案。 |
+| **acme.sh** | [acmesh-official/acme.sh](https://github.com/acmesh-official/acme.sh) | 业界最轻量纯 Unix Shell 实现的自动化 SSL/TLS 证书客户端，为本项目提供了 HTTP-01 验证、零停机 Webroot 挂载与 Cloudflare DNS-01 API 免 80 端口泛域名签发能力。 |
+| **University of Tsukuba VPNGate Project** | 筑波大学·登大游 ([vpngate.net](https://www.vpngate.net/)) | 筑波大学学术实验项目，维护全球海量自愿中继学术与居民节点网络，为本项目的动态住宅家宽出站调度池提供了基石数据源。 |
+| **SoftEther VPN Project** | [SoftEtherVPN/SoftEtherVPN](https://github.com/SoftEtherVPN/SoftEtherVPN) | 登大游博士开发的工业级多协议跨平台 VPN 引擎，为本项目提供了底层高性能虚拟网卡与隧道通信协议支持。 |
+| **SSTP-Client** | [sstp-project/sstp-client](https://gitlab.com/sstp-project/sstp-client) | Eivind Næss 维护的高性能开源 Linux SSTP 客户端，实现了基于 TLS 端口的高鲁棒性企业级穿透拨号。 |
+| **Clash.Meta (Mihomo)** | [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) | 新一代开源分流核心，本项目全生态订阅系统自动适配生成符合其规格的高性能 YAML 订阅与策略组。 |
+| **v2ray-agent (八合一/九合一)** | [mack-a/v2ray-agent](https://github.com/mack-a/v2ray-agent) | 开拓性的多协议共存与 Nginx SNI 回源分流理念，为本项目早期的双出站设计提供了宝贵的架构参考。 |
+| **fanout & miku-gate** | `byJoey/fanout` & `vioIetMiku/miku-gate` | 启发了本项目 V1.5.0 的真实家宽判定启发式算法（`is_residential`）与多源容灾调度池并发架构设计。 |
+| **Linux TCP BBR 优化实践** | 秋水逸冰 ([teddysun.com](https://teddysun.com)) / 逗比根据地 (Toyo) | 经典 Linux 内核拥塞控制与网络调优方法论，为本项目的一键 BBR 与 TCP 缓冲区调优脚本提供了设计灵感。 |
+| **Hysteria** | [apernet/hysteria](https://github.com/apernet/hysteria) | 突破性的 UDP-Brutal 传输协议与丢包补偿算法，为本项目提供了恶劣弱网环境下的极限单线程加速能力。 |
+| **EAimili** | AimiliVPN 初始核心团队 | 提供了 AimiliVPN 初始的住宅节点智能调度和可视化控制面板雏形。 |
+
+---
+
 <a name="english"></a>
 
 ## English
@@ -415,7 +436,28 @@ Subscription links available on `https://your-domain-or-ip:18443/`:
 
 ---
 
-### 10. 版本更新历史 (Changelog)
+### 8. Acknowledgments & Upstream Projects
+
+AimiliVPN extends our sincere gratitude to the global open-source community and network engineering pioneers. The design and implementation of this project builds upon and integrates the following outstanding open-source projects (listed in no particular order):
+
+| Project / Repository | Organization / Author / Link | Contribution & How AimiliVPN Uses It |
+| :--- | :--- | :--- |
+| **Sing-box** | [SagerNet/sing-box](https://github.com/SagerNet/sing-box) | Core proxy platform underpinning this system. Powers VLESS-Reality, Hysteria 2, TUIC v5, AnyTLS, VMess-xHTTP, user-space WireGuard endpoints, and the rule routing engine. |
+| **Cloudflare cloudflared & WARP** | [cloudflare/cloudflared](https://github.com/cloudflare/cloudflared) | Cloudflare Zero Trust Named Tunnels and global Anycast CDN edge. Powers IPv4 emergency rescue, NAT punching, and WARP adaptive streaming/AI unblocking. |
+| **acme.sh** | [acmesh-official/acme.sh](https://github.com/acmesh-official/acme.sh) | Ultra-lightweight pure Unix shell ACME client. Powers automated HTTP-01 webroot issuance and Cloudflare DNS-01 API wildcard certificates without port 80. |
+| **University of Tsukuba VPNGate Project** | University of Tsukuba / Daiyuu Nobori ([vpngate.net](https://www.vpngate.net/)) | Academic research project maintaining a global volunteer relay network, providing the foundation for our residential relay pool. |
+| **SoftEther VPN Project** | [SoftEtherVPN/SoftEtherVPN](https://github.com/SoftEtherVPN/SoftEtherVPN) | Multi-protocol enterprise VPN software created by Dr. Daiyuu Nobori, providing high-performance virtual adapter and tunneling capabilities. |
+| **SSTP-Client** | [sstp-project/sstp-client](https://gitlab.com/sstp-project/sstp-client) | High-performance open-source SSTP client maintained by Eivind Næss, enabling robust enterprise-grade TLS-based tunneling. |
+| **Clash.Meta (Mihomo)** | [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) | Advanced rule-based proxy core. AimiliVPN generates automated YAML configs with latency urltest and failover groups matching its specification. |
+| **v2ray-agent (8-in-1 / 9-in-1)** | [mack-a/v2ray-agent](https://github.com/mack-a/v2ray-agent) | Pioneering script for multi-protocol coexistence and Nginx SNI reverse proxy architectures in China, providing invaluable early architectural insights. |
+| **fanout & miku-gate** | `byJoey/fanout` & `vioIetMiku/miku-gate` | Inspired our V1.5.0 residential IP qualification algorithm (`is_residential`) and multi-source concurrent racing scheduler. |
+| **Linux TCP BBR Practice** | Teddysun ([teddysun.com](https://teddysun.com)) / Toyo | Classical Linux TCP BBR congestion control tuning methodologies inspiring our kernel optimization scripts. |
+| **Hysteria** | [apernet/hysteria](https://github.com/apernet/hysteria) | Groundbreaking UDP-Brutal transport protocol compensating for packet loss under adverse network conditions. |
+| **EAimili** | Original AimiliVPN Core Team | Pioneered the original concept of residential proxy pool management and the web administration dashboard. |
+
+---
+
+### 9. Changelog
 
 #### 🌟 V1.5.0 (2026-10-27) - 工业级 Linux Netns 物理网络隔离与家宽调度重构版
 - 🛡️ **Linux Netns 物理网络隔离**：引入独立网络命名空间（`aimili_ns_*`）与专用 `veth-pair` 子网（`10.99.<slot>.0/24`），将 OpenVPN 拨号进程绝对限制在隔离空间内部；**母机物理网卡（`eth0`）与默认网关 100% 保持完好，彻底终结了母机掉线与 SSH 失联的行业顽疾**；
