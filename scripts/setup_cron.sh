@@ -2,7 +2,7 @@
 # ==============================================================================
 # AimiliVPN - 定时系统自愈与内存深度清理调度管理器 (setup_cron.sh)
 # 功能:
-# 1. 每日凌晨 04:00 执行内存页面释放 (drop_caches)，解决小内存 VPS (512M/1G) OOM 痛点
+# 1. 每日凌晨 04:00 执行磁盘脏数据安全回写 (sync)、权威时间同步、证书检测与日志瘦身
 # 2. 定时调用 HTTPS 权威时钟同步，彻底根绝 VMess/VLESS 时间漂移 >90s 导致连接断开
 # 3. 每 15 分钟守护监控: 核心服务 (sing-box/aimilivpn) 崩溃自愈拉起
 # 4. 公网 IP 动态变更检测: 若发现 IP 漂移，自动更新订阅并通过 Telegram Bot 推送
@@ -70,10 +70,15 @@ uninstall_cron() {
 
 # 深度日常维护 (每日凌晨 04:00 执行)
 run_maintenance() {
+    exec 200>/var/run/aimilivpn_maint.lock 2>/dev/null || true
+    if command -v flock >/dev/null 2>&1; then
+        flock -n 200 || { echo "[WARN] 深度维护任务正在运行中，跳过重叠调用"; return 0; }
+    fi
+
     echo "=========================================================="
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 开始执行 AimiliVPN 深度系统维护..."
 
-    # 1. 磁盘脏数据回写与系统状态检查
+    # 1. 磁盘脏数据回写与文件系统同步
     echo "1. 正在同步磁盘文件系统 (sync)..."
     sync
     echo "   内存状态: 当前可用内存 $(free -m 2>/dev/null | awk '/Mem:/ {print $7}') MB"
@@ -103,6 +108,11 @@ run_maintenance() {
 
 # 实时进程看门狗与 IP 变更自愈 (每 15 分钟执行)
 run_watchdog() {
+    exec 201>/var/run/aimilivpn_watchdog.lock 2>/dev/null || true
+    if command -v flock >/dev/null 2>&1; then
+        flock -n 201 || { echo "[WARN] 看门狗任务正在运行中，跳过重叠调用"; return 0; }
+    fi
+
     local now
     now=$(date '+%Y-%m-%d %H:%M:%S')
 

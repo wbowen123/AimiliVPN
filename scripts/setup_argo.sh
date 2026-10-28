@@ -253,12 +253,17 @@ EOF
         systemctl restart cloudflared-argo.service
     fi
 
+    local masked_token="***"
+    if [[ ${#token} -gt 14 ]]; then
+        masked_token="${token:0:8}***${token: -6}"
+    fi
+
     cat > "${ARGO_JSON}" <<EOF
 {
   "type": "token",
   "domain": "${domain}",
   "local_port": ${local_port},
-  "token_masked": "${token:0:8}***${token: -6}",
+  "token_masked": "${masked_token}",
   "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 }
 EOF

@@ -227,8 +227,8 @@ echo -e "     -> 解决：优先选用原生极速 VLESS-Reality 节点，或升
 echo
 echo -e "${BOLD}${BLUE}======================================================================${PLAIN}\n"
 
-# 7. 返回整体健康码 (Sing-box 或 Nginx 核心故障时返回 1，供监控与自动化流水线判定)
-if [ "${S_SINGBOX:-0}" -ne 0 ] || [ "${S_NGINX:-0}" -ne 0 ]; then
+# 7. 返回整体健康码 (Sing-box、AimiliVPN 或 Nginx 核心故障时返回 1，供监控与自动化流水线判定)
+if [ "${S_SINGBOX:-0}" -ne 0 ] || [ "${S_AIMILI:-0}" -ne 0 ] || [ "${S_NGINX:-0}" -ne 0 ]; then
     exit 1
 fi
 exit 0

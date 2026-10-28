@@ -262,7 +262,7 @@ if [ "$ACME_AVAILABLE" = "1" ] && [ "$ACME_ISSUED" != "1" ]; then
   fi
 fi
 
-nginx -t && service_reload
+(nginx -t >/dev/null 2>&1 && service_reload) || true
 
 if [ "$ACME_ISSUED" = "1" ] && command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files 2>/dev/null | grep -q '^certbot.timer'; then
   systemctl enable --now certbot.timer >/dev/null 2>&1 || true
@@ -281,7 +281,8 @@ EOF
 fi
 
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
-  ufw allow 8443/tcp >/dev/null; ufw allow 18443/tcp >/dev/null
+  ufw allow 8443/tcp >/dev/null 2>&1 || true
+  ufw allow 18443/tcp >/dev/null 2>&1 || true
 fi
 if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
   firewall-cmd --permanent --add-port=8443/tcp >/dev/null || true

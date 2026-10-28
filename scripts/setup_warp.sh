@@ -63,8 +63,9 @@ show_warp_principle() {
 # 注册 WARP 客户端并生成密钥
 register_warp_account() {
     log_info "正在注册 Cloudflare WARP 客户端账号并获取双栈 WireGuard 凭据..."
+    mkdir -p "${DATA_DIR}"
 
-    python3 - <<'EOF'
+    if ! python3 - <<'EOF'
 import urllib.request
 import json
 import base64
@@ -153,20 +154,19 @@ try:
             json.dump(data, f, indent=2)
         print("SUCCESS")
 except Exception as e:
-    data = {
-        "private_key": priv_key,
-        "public_key": pub_key,
-        "v4": "172.16.0.2/32",
-        "v6": "2606:4700:110:8888::/128",
-        "reserved": [0, 0, 0],
-        "peer_pub": "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
-        "peer_endpoint": "162.159.192.1:2408",
-        "fallback": True
-    }
-    with open(account_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-    print(f"WARN: API response error ({e}), applied fallback standard config.")
+    sys.stderr.write(f"注册 Cloudflare WARP 失败: {e}\n")
+    if os.path.exists(account_file):
+        try:
+            os.remove(account_file)
+        except Exception:
+            pass
+    sys.exit(1)
 EOF
+    then
+        log_err "Cloudflare WARP 账号注册失败，无法获取有效 WireGuard 凭据！"
+        return 1
+    fi
+    return 0
 }
 
 # 注入 WARP 到 Sing-box 配置文件
@@ -184,14 +184,17 @@ apply_warp_to_singbox() {
     fi
 
     if [[ "${mode}" != "off" && ! -f "${WARP_JSON}" ]]; then
-        register_warp_account
+        if ! register_warp_account; then
+            log_err "未能获取有效 WARP 凭据，已中止向 Sing-box 注入 WARP 规则以避免流量黑洞！"
+            return 1
+        fi
     fi
 
     # 建立独立配置事务备份，防止与其他脚本备份覆盖或配置损坏导致 sing-box 假死
     WARP_CONFIG_BAK="${SINGBOX_CONFIG}.warp.bak"
     cp -f "${SINGBOX_CONFIG}" "${WARP_CONFIG_BAK}"
 
-    python3 - "${SINGBOX_CONFIG}" "${WARP_JSON}" "${mode}" <<'EOF'
+    if ! python3 - "${SINGBOX_CONFIG}" "${WARP_JSON}" "${mode}" <<'EOF'
 import sys
 import json
 import os
@@ -211,6 +214,10 @@ outbounds = [o for o in outbounds if o.get("tag") != "warp-out"]
 if mode != "off" and os.path.exists(warp_file):
     with open(warp_file, "r", encoding="utf-8") as f:
         warp = json.load(f)
+
+    if warp.get("fallback") or not warp.get("private_key") or not warp.get("token"):
+        print("ERROR: 当前 WARP 凭据无效或未向 Cloudflare 成功注册，中止注入！", file=sys.stderr)
+        sys.exit(1)
 
     ep = warp.get("peer_endpoint", "162.159.192.1:2408")
     server_host = ep.split(":")[0] if ":" in ep else ep
@@ -353,6 +360,14 @@ with open(cfg_file, "w", encoding="utf-8") as f:
 
 print("CONFIG_UPDATED")
 EOF
+    then
+        log_err "Sing-box 配置文件更新失败，正在恢复原配置..."
+        if [[ -f "${WARP_CONFIG_BAK}" ]]; then
+            cp -f "${WARP_CONFIG_BAK}" "${SINGBOX_CONFIG}"
+            rm -f "${WARP_CONFIG_BAK}"
+        fi
+        return 1
+    fi
 
     SB_BIN=""
     if command -v sing-box >/dev/null 2>&1; then

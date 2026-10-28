@@ -46,6 +46,20 @@ def is_cert_trusted_ca(cert_path="/etc/aimilivpn/tls/fullchain.pem"):
     except Exception:
         return False
 
+def check_domain_dns(domain_to_check, timeout=1.5):
+    """带严格超时控制的快速 DNS 解析探测，避免在弱网或 DNS 污染环境下阻塞整个订阅重建流"""
+    if not domain_to_check:
+        return False
+    import socket
+    import concurrent.futures
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(socket.gethostbyname, domain_to_check)
+            future.result(timeout=timeout)
+            return True
+    except Exception:
+        return False
+
 def generate_subscriptions(nodes_data, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     data_dir_path = nodes_data.get("data_dir", "/opt/aimilivpn/vpngate_data")
@@ -90,37 +104,29 @@ def generate_subscriptions(nodes_data, output_dir):
             base_d = clean_d[7:]
             direct_host = clean_d
             cand_cdn = f"cdn.{base_d}"
-            try:
-                import socket
-                socket.gethostbyname(cand_cdn)
+            if check_domain_dns(cand_cdn, timeout=1.5):
                 cdn_host = cand_cdn
-            except Exception:
+            else:
                 cdn_host = ""
                 print(f"  [!] 提示: 检测到 direct. 域名 {clean_d}，但 {cand_cdn} 尚未配置 DNS 解析，跳过 CDN 节点生成。")
         elif clean_d.startswith("cdn."):
             base_d = clean_d[4:]
             cand_direct = f"direct.{base_d}"
-            try:
-                import socket
-                socket.gethostbyname(cand_direct)
+            if check_domain_dns(cand_direct, timeout=1.5):
                 direct_host = cand_direct
-            except Exception:
+            else:
                 direct_host = clean_d
             cdn_host = clean_d
         else:
             cand_direct = f"direct.{clean_d}"
             cand_cdn = f"cdn.{clean_d}"
-            try:
-                import socket
-                socket.gethostbyname(cand_direct)
+            if check_domain_dns(cand_direct, timeout=1.5):
                 direct_host = cand_direct
-            except Exception:
+            else:
                 direct_host = domain
-            try:
-                import socket
-                socket.gethostbyname(cand_cdn)
+            if check_domain_dns(cand_cdn, timeout=1.5):
                 cdn_host = cand_cdn
-            except Exception:
+            else:
                 cdn_host = ""
                 print(f"  [!] 提示: 检测到域名 {domain}，但 {cand_cdn} 尚未配置 DNS 解析，跳过 CDN 节点生成（如需 CDN 节点，请在 Cloudflare 添加 {cand_cdn} 解析并开启小黄云）。")
 

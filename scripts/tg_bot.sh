@@ -204,10 +204,19 @@ if os.path.exists(ip_file):
         with open(ip_file, encoding='utf-8') as f: ip = f.read().strip()
     except Exception: pass
 
+secret_path = ''
+auth_file = os.path.join(data_dir, 'ui_auth.json')
+if os.path.exists(auth_file):
+    try:
+        with open(auth_file, encoding='utf-8') as f:
+            secret_path = json.load(f).get('secret_path', '').strip('/')
+    except Exception: pass
+sub_prefix = f'sub_{secret_path}/' if secret_path else ''
+
 host = domain if domain else ip
-sub_url = f'https://{host}:18443/sub.txt'
-clash_url = f'https://{host}:18443/clash.yaml'
-singbox_url = f'https://{host}:18443/singbox.json'
+sub_url = f'https://{host}:18443/{sub_prefix}sub.txt'
+clash_url = f'https://{host}:18443/{sub_prefix}clash.yaml'
+singbox_url = f'https://{host}:18443/{sub_prefix}singbox.json'
 
 lines = [
     '⚡ <b>AimiliVPN 全协议订阅推送</b>',

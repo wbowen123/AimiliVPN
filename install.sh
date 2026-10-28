@@ -191,7 +191,8 @@ aimili_env_report() {
         else
             case "${p}:${owner}" in
                 8443:nginx|8500:python3|8501:python3) echo -e "  端口 ${p}:   ${owner}（AimiliVPN 自己）" ;;
-                443:*) echo -e "  端口 ${p}:    ${owner}（九合一节点端口，AimiliVPN 不用 443）" ;;
+                443:sing-box) echo -e "  端口 ${p}:    ${owner}（Sing-box 核心代理矩阵）" ;;
+                443:*) echo -e "  端口 ${p}:    ${owner}（443 核心端口占用，请留意冲突）" ;;
                 *) echo -e "  端口 ${p}:   ${RED}被 ${owner} 占用${PLAIN}"; AIMILI_PORT_CONFLICT="${AIMILI_PORT_CONFLICT} ${p}(${owner})" ;;
             esac
         fi
@@ -1015,6 +1016,7 @@ TimeoutStartSec=15min
 UNIT
 systemctl daemon-reload
 echo -e "\n${YELLOW}[3/4] 正在配置系统服务...${PLAIN}"
+PY_BIN=$(command -v python3 || echo "/usr/bin/python3")
 if command -v systemctl >/dev/null 2>&1; then
     echo -e "  -> 检测到 systemd，正在创建服务配置 /lib/systemd/system/aimilivpn.service ..."
     cat > /lib/systemd/system/aimilivpn.service <<EOF
@@ -1025,7 +1027,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=/usr/bin/python3 vpngate_manager.py
+ExecStart=${PY_BIN} vpngate_manager.py
 Restart=always
 RestartSec=5
 Environment=HOME=/root
@@ -1044,7 +1046,7 @@ elif command -v rc-service >/dev/null 2>&1; then
 #!/sbin/openrc-run
 
 description="AimiliVPN OpenVPN Manager with HTTP/SOCKS5 Proxy"
-command="/usr/bin/python3"
+command="${PY_BIN}"
 command_args="${INSTALL_DIR}/vpngate_manager.py"
 command_background="yes"
 directory="${INSTALL_DIR}"
@@ -1422,9 +1424,11 @@ aimili_print_summary() {
     if [ -n "$PUBLIC_IPV6" ]; then
         echo -e "  * HTTPS 管理后台(IPv6):  ${BLUE}https://[${PUBLIC_IPV6}]:8443/${SECRET_PATH}/${PLAIN}"
     fi
+    local sub_prefix=""
+    [ -n "${SECRET_PATH:-}" ] && sub_prefix="sub_${SECRET_PATH}/"
     echo -e "  * 网页管理账号:          ${YELLOW}${USERNAME}${PLAIN}"
     echo -e "  * 网页管理密码:          ${YELLOW}${PASSWORD}${PLAIN}"
-    echo -e "  * HTTPS 订阅入口:       ${BLUE}https://${AIMILIVPN_DOMAIN:-${PUBLIC_IP}}:18443/${PLAIN}${AIMILIVPN_DOMAIN:+  （备用 IP: https://${PUBLIC_IP}:18443/）}"
+    echo -e "  * HTTPS 订阅入口:       ${BLUE}https://${AIMILIVPN_DOMAIN:-${PUBLIC_IP}}:18443/${sub_prefix}${PLAIN}${AIMILIVPN_DOMAIN:+  （备用 IP: https://${PUBLIC_IP}:18443/${sub_prefix}）}"
     echo -e "  * HTTP/SOCKS5代理:   ${BLUE}${PUBLIC_IP}:8500${PLAIN}"
     echo -e "  * 代理账号配置:         ${BLUE}/etc/default/aimilivpn${PLAIN}"
     echo -e "  * 默认 SOCKS5 密码:     ${YELLOW}ilovestudy${PLAIN}（建议首次部署后修改）"
@@ -1446,14 +1450,14 @@ aimili_print_summary() {
             echo -e "${BOLD}${GREEN}        ⚡ AimiliVPN 全协议双栈矩阵 × 原生/家宽双出站聚合订阅${PLAIN}"
             echo -e "${GREEN}======================================================================${PLAIN}"
             echo -e "  * 核心状态:             ${GREEN}运行中 (端口 443 / VLESS Reality / Hysteria 2 / TUIC)${PLAIN}"
-            echo -e "  * 🌟 Base64 通用订阅:   ${BLUE}https://${sub_host}:18443/sub.txt${PLAIN}"
-            echo -e "  * 🐱 Clash Meta 订阅:   ${BLUE}https://${sub_host}:18443/clash.yaml${PLAIN}"
-            echo -e "  * 📦 Sing-box 原生订阅: ${BLUE}https://${sub_host}:18443/singbox.json${PLAIN}"
-            echo -e "  * 📄 Plaintext 节点:    ${BLUE}https://${sub_host}:18443/nodes.txt${PLAIN}"
-            echo -e "  * ⚡ 免证书 HTTP 订阅:  ${BLUE}http://${sub_host}:18080/sub.txt${PLAIN} (Clash: ${BLUE}http://${sub_host}:18080/clash.yaml${PLAIN})"
+            echo -e "  * 🌟 Base64 通用订阅:   ${BLUE}https://${sub_host}:18443/${sub_prefix}sub.txt${PLAIN}"
+            echo -e "  * 🐱 Clash Meta 订阅:   ${BLUE}https://${sub_host}:18443/${sub_prefix}clash.yaml${PLAIN}"
+            echo -e "  * 📦 Sing-box 原生订阅: ${BLUE}https://${sub_host}:18443/${sub_prefix}singbox.json${PLAIN}"
+            echo -e "  * 📄 Plaintext 节点:    ${BLUE}https://${sub_host}:18443/${sub_prefix}nodes.txt${PLAIN}"
+            echo -e "  * ⚡ 免证书 HTTP 订阅:  ${BLUE}http://${sub_host}:18080/${sub_prefix}sub.txt${PLAIN} (Clash: ${BLUE}http://${sub_host}:18080/${sub_prefix}clash.yaml${PLAIN})"
             echo -e "  * 备用 HTTPS 订阅:      ${BLUE}https://${sub_host}:8443/sub/sub.txt${PLAIN}"
             if [ -f "${INSTALL_DIR}/scripts/print_qr.py" ]; then
-                python3 "${INSTALL_DIR}/scripts/print_qr.py" "https://${sub_host}:18443/sub.txt" "全生态聚合订阅二维码 (手机扫码一键导入)"
+                python3 "${INSTALL_DIR}/scripts/print_qr.py" "https://${sub_host}:18443/${sub_prefix}sub.txt" "全生态聚合订阅二维码 (手机扫码一键导入)"
             fi
             echo -e "${GREEN}======================================================================${PLAIN}"
             echo
@@ -1479,7 +1483,9 @@ aimili_print_summary() {
 if [ "${INSTALL_SINGBOX:-}" = "y" ] || [ "${INSTALL_SINGBOX:-}" = "Y" ]; then
     echo -e "\n${YELLOW}开始配置 Sing-box 全协议核心与全生态订阅...${PLAIN}"
     if [ -f "${INSTALL_DIR}/scripts/setup_singbox.sh" ]; then
-        bash "${INSTALL_DIR}/scripts/setup_singbox.sh" "${SINGBOX_CAMOUFLAGE:-gateway.icloud.com}"
+        bash "${INSTALL_DIR}/scripts/setup_singbox.sh" "${SINGBOX_CAMOUFLAGE:-gateway.icloud.com}" || {
+            echo -e "${RED}[!] 警告: Sing-box 核心初始化或配置生成遇到异常，请稍后执行 'ml test' 排查修复。${PLAIN}"
+        }
     fi
 
     # 执行 WARP 自适应流媒体与 AI 解锁配置

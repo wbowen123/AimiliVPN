@@ -612,7 +612,9 @@ fi
 if command -v nft >/dev/null 2>&1; then
     nft add table ip aimilivpn 2>/dev/null || true
     nft add chain ip aimilivpn prerouting '{ type nat hook prerouting priority -100; }' 2>/dev/null || true
-    nft add rule ip aimilivpn prerouting udp dport 40000-50000 redirect to :443 2>/dev/null || true
+    if ! nft list chain ip aimilivpn prerouting 2>/dev/null | grep -q 'dport 40000-50000'; then
+        nft add rule ip aimilivpn prerouting udp dport 40000-50000 redirect to :443 2>/dev/null || true
+    fi
 fi
 
 # 11. 写入汇总数据
@@ -678,6 +680,8 @@ if command -v nginx >/dev/null 2>&1; then
     if nginx -t >/dev/null 2>&1; then
         systemctl reload nginx >/dev/null 2>&1 || systemctl restart nginx >/dev/null 2>&1 || true
         echo -e "${GREEN}  -> Nginx 订阅入口 (端口 18443 & /sub/) 已就绪${PLAIN}"
+    else
+        echo -e "${YELLOW}  [!] Nginx 配置语法检测未通过，已跳过 reload (可手动执行 nginx -t 检查排错)${PLAIN}"
     fi
 fi
 

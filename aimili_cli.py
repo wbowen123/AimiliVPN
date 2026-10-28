@@ -173,10 +173,16 @@ def get_subscription_data():
     resi_links = [l for l in all_links if "住宅" in _get_link_text(l) or "家宽" in _get_link_text(l)]
     argo_links = [l for l in all_links if "Argo" in _get_link_text(l) or "CDN" in _get_link_text(l)]
 
+    auth_data = get_web_auth_data()
+    secret_path = auth_data.get("secret_path", "").strip("/")
+    sub_prefix = f"sub_{secret_path}/" if secret_path else ""
+
     return {
         "public_ip": public_ip,
         "domain": domain,
         "sub_host": sub_host,
+        "secret_path": secret_path,
+        "sub_prefix": sub_prefix,
         "all_links": all_links,
         "direct_links": direct_links,
         "resi_links": resi_links,
@@ -187,16 +193,16 @@ def get_subscription_data():
         "resi_host": data.get("resi_host", "127.0.0.1"),
         "resi_port": data.get("resi_port", 8500),
         "public_ipv6": data.get("public_ipv6", ""),
-        "sub_url_18443": f"https://{sub_host}:18443/sub.txt",
-        "clash_url_18443": f"https://{sub_host}:18443/clash.yaml",
-        "singbox_url_18443": f"https://{sub_host}:18443/singbox.json",
-        "nodes_txt_url": f"https://{sub_host}:18443/nodes.txt",
-        "sub_url_18080": f"http://{sub_host}:18080/sub.txt",
-        "clash_url_18080": f"http://{sub_host}:18080/clash.yaml",
-        "singbox_url_18080": f"http://{sub_host}:18080/singbox.json",
-        "sub_url_v6_18080": f"http://[{data.get('public_ipv6')}]:18080/sub.txt" if data.get("public_ipv6") else "",
-        "clash_url_v6_18080": f"http://[{data.get('public_ipv6')}]:18080/clash.yaml" if data.get("public_ipv6") else "",
-        "sub_url_v6_18443": f"https://[{data.get('public_ipv6')}]:18443/sub.txt" if data.get("public_ipv6") else "",
+        "sub_url_18443": f"https://{sub_host}:18443/{sub_prefix}sub.txt",
+        "clash_url_18443": f"https://{sub_host}:18443/{sub_prefix}clash.yaml",
+        "singbox_url_18443": f"https://{sub_host}:18443/{sub_prefix}singbox.json",
+        "nodes_txt_url": f"https://{sub_host}:18443/{sub_prefix}nodes.txt",
+        "sub_url_18080": f"http://{sub_host}:18080/{sub_prefix}sub.txt",
+        "clash_url_18080": f"http://{sub_host}:18080/{sub_prefix}clash.yaml",
+        "singbox_url_18080": f"http://{sub_host}:18080/{sub_prefix}singbox.json",
+        "sub_url_v6_18080": f"http://[{data.get('public_ipv6')}]:18080/{sub_prefix}sub.txt" if data.get("public_ipv6") else "",
+        "clash_url_v6_18080": f"http://[{data.get('public_ipv6')}]:18080/{sub_prefix}clash.yaml" if data.get("public_ipv6") else "",
+        "sub_url_v6_18443": f"https://[{data.get('public_ipv6')}]:18443/{sub_prefix}sub.txt" if data.get("public_ipv6") else "",
         "sub_url_8443": f"https://{sub_host}:8443/sub/sub.txt",
         "short_id": data.get("short_id", ""),
         "public_key": data.get("public_key", ""),
@@ -208,7 +214,7 @@ def print_terminal_qr(content, title="全生态聚合订阅二维码 (手机扫�
     """渲染终端 ASCII / ANSI 二维码"""
     qr_script = os.path.join(INSTALL_DIR, "scripts", "print_qr.py")
     if os.path.exists(qr_script):
-        subprocess.call(["python3", qr_script, content, title])
+        subprocess.call([sys.executable, qr_script, content, title])
     elif shutil.which("qrencode"):
         print(f"\n{C_BOLD}{C_BLUE}📱 ========== 【{title}】 =========={C_RESET}")
         try:
