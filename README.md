@@ -336,10 +336,10 @@ ml singbox  # Sing-box 核心管理（start/stop/restart/logs/status）
 | **SSTP-Client** | [sstp-project/sstp-client](https://gitlab.com/sstp-project/sstp-client) | Eivind Næss 维护的高性能开源 Linux SSTP 客户端，实现了基于 TLS 端口的高鲁棒性企业级穿透拨号。 |
 | **Clash.Meta (Mihomo)** | [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) | 新一代开源分流核心，本项目全生态订阅系统自动适配生成符合其规格的高性能 YAML 订阅与策略组。 |
 | **v2ray-agent (八合一/九合一)** | [mack-a/v2ray-agent](https://github.com/mack-a/v2ray-agent) | 开拓性的多协议共存与 Nginx SNI 回源分流理念，为本项目早期的双出站设计提供了宝贵的架构参考。 |
-| **fanout & miku-gate** | `byJoey/fanout` & `vioIetMiku/miku-gate` | 启发了本项目 V1.5.0 的真实家宽判定启发式算法（`is_residential`）与多源容灾调度池并发架构设计。 |
-| **Linux TCP BBR 优化实践** | 秋水逸冰 ([teddysun.com](https://teddysun.com)) / 逗比根据地 (Toyo) | 经典 Linux 内核拥塞控制与网络调优方法论，为本项目的一键 BBR 与 TCP 缓冲区调优脚本提供了设计灵感。 |
+| **fanout & miku-gate** | [byJoey/fanout](https://github.com/byJoey/fanout) & [vioIetMiku/miku-gate](https://github.com/vioIetMiku/miku-gate) | 启发了本项目 V1.5.0 的真实家宽判定启发式算法（`is_residential`）与多源容灾调度池并发架构设计。 |
+| **Linux TCP BBR 优化实践** | [秋水逸冰 (teddysun.com)](https://teddysun.com) / [逗比根据地 (Toyo)](https://github.com/ToyoDAdoubi) | 经典 Linux 内核拥塞控制与网络调优方法论，为本项目的一键 BBR 与 TCP 缓冲区调优脚本提供了设计灵感。 |
 | **Hysteria** | [apernet/hysteria](https://github.com/apernet/hysteria) | 突破性的 UDP-Brutal 传输协议与丢包补偿算法，为本项目提供了恶劣弱网环境下的极限单线程加速能力。 |
-| **EAimili** | AimiliVPN 初始核心团队 | 提供了 AimiliVPN 初始的住宅节点智能调度和可视化控制面板雏形。 |
+| **EAimili** | [OpenMili 核心团队 (OpenMili/aimili-vpngate)](https://github.com/OpenMili/aimili-vpngate) | 提供了 AimiliVPN 初始的住宅节点智能调度和可视化控制面板雏形。 |
 
 ---
 
@@ -578,56 +578,55 @@ AimiliVPN extends our sincere gratitude to the global open-source community and 
 | **aimili-vpngate (Guli-Joy)** | [Guli-Joy/aimili-vpngate](https://github.com/Guli-Joy/aimili-vpngate) | Multi-egress tuned fork (Stars 27+). Provided non-blocking concurrent TCP port prescreening, 1800s dead-node cooldown penalty pool, and active downstream socket termination concepts. |
 | **AimiliVPN (hankinsus)** | [hankinsus/AimiliVPN](https://github.com/hankinsus/AimiliVPN) | Provided early control plane and web dynamic library foundations; refactored in this project into pure Python and modern Linux Netns isolation. |
 | **AimiliVPN (liuyesblog)** | [liuyesblog/AimiliVPN](https://github.com/liuyesblog/AimiliVPN) | Static mirror and cross-version comparative reference. |
-| **fanout & miku-gate** | `byJoey/fanout` & `vioIetMiku/miku-gate` | Inspired our residential IP qualification algorithm (`is_residential`) and multi-source concurrent racing scheduler. |
-| **Linux TCP BBR Practice** | Teddysun ([teddysun.com](https://teddysun.com)) / Toyo | Classical Linux TCP BBR congestion control tuning methodologies inspiring our kernel optimization scripts. |
+| **fanout & miku-gate** | [byJoey/fanout](https://github.com/byJoey/fanout) & [vioIetMiku/miku-gate](https://github.com/vioIetMiku/miku-gate) | Inspired our residential IP qualification algorithm (`is_residential`) and multi-source concurrent racing scheduler. |
+| **Linux TCP BBR Practice** | [Teddysun (teddysun.com)](https://teddysun.com) / [Toyo (doubi)](https://github.com/ToyoDAdoubi) | Classical Linux TCP BBR congestion control tuning methodologies inspiring our kernel optimization scripts. |
 | **Hysteria** | [apernet/hysteria](https://github.com/apernet/hysteria) | Groundbreaking UDP-Brutal transport protocol compensating for packet loss under adverse network conditions. |
-| **EAimili** | Original AimiliVPN Core Team | Pioneered the original concept of residential proxy pool management and the web administration dashboard. |
+| **EAimili** | [OpenMili Core Team (OpenMili/aimili-vpngate)](https://github.com/OpenMili/aimili-vpngate) | Pioneered the original concept of residential proxy pool management and the web administration dashboard. |
 
 ---
 
-### 9. Changelog (版本历史与更新记录)
+### 9. Version History & Changelog
 
 > **Version Release Specification**: This project strictly adheres to Semantic Versioning (SemVer). Every major release is recorded in reverse chronological order with its **Version** (SemVer) and explicit **Release Timestamp** (YYYY-MM-DD HH:mm:ss CST).
 
-#### 🌟 V1.6.0 (2026-10-30 16:45:00 CST) - Sing-box 原生多国家住宅出口矩阵与生产级安全稳态引擎
-- 🛡️ **阶段一：安全清洗加固与下游连接主动切断（Phase 1）**：
-  - **OpenVPN 白名单清洗与 RCE 防御 (`sanitize_ovpn_config`)**：借鉴 `OpenMili/aimili-vpngate` 生产级安全防护模型，建立指令白名单 `SAFE_OVPN_DIRECTIVES` 与内联块白名单 `SAFE_OVPN_INLINE_BLOCKS`，强行剥离所有 `up/down/script-security/plugin/tls-verify` 等高危脚本挂钩指令，从操作系统底层封杀不可信节点的提权与远程代码执行（RCE）漏洞；
-  - **下游黑洞 Socket 主动切断机制 (`ConnRegistry`)**：借鉴 `Guli-Joy/aimili-vpngate` 连接追踪模型，建立客户端 Socket 全生命周期管理池。主节点发生切换或 IP 漂移自愈时，网桥主动调用 `close_all()` 强制切断存量下游死连接，促成客户端 TCP 栈毫秒级感知并重新发起拨号，彻底消灭客户端长达数十秒的无网卡死。
-- 🚀 **阶段二：性能预筛分层与假活节点冷却防抖（Phase 2）**：
-  - **非阻塞并发 TCP 端口毫秒级预筛 (`tcp_prescreen_nodes`)**：借鉴 `Guli-Joy/aimili-vpngate` 分层筛选思想，基于多线程发起 0.8s 非阻塞端口探针，毫秒级快速淘汰 40%~60% 的死端口节点，候选池筛选与建连测速效率提升 5~10 倍，UDP 节点默认免筛放行；
-  - **假活与僵尸节点 1800 秒冷却惩罚池 (`NodeCooldownPool`)**：借鉴 `Guli-Joy/aimili-vpngate` 惩罚机制，对“OpenVPN 握手成功但无法出网获取出口公网 IP 或 IP 瞬间漂移”的假活节点，实施 1800 秒（30分钟）硬性冷却惩罚，抓取与换线时自动过滤，到期无感释放，彻底杜绝自愈死循环换线。
-- 🌐 **阶段三：架构升华 - Sing-box 原生多国家住宅出口矩阵（Phase 3）**：
-  - **Netns 多槽位独立网桥管理器 (`AimiliMultiSlotManager` & `ResidentialSlot`)**：突破单一 8500 家宽出口限制，实现物理隔离的多国家家宽出口矩阵：
-    - **槽位 0**：本地 `127.0.0.1:8500`（默认全球最优家宽，命名空间 `aimili_ns_0`，保持 100% 向后兼容）；
-    - **槽位 1**：本地 `127.0.0.1:8502`（美国独享住宅家宽 `US`，命名空间 `aimili_ns_1`）；
-    - **槽位 2**：本地 `127.0.0.1:8503`（日本独享住宅家宽 `JP`，命名空间 `aimili_ns_2`）。
-    - 支持原子状态保存与无损加载（`slots_state.json`），向控制面、Sing-box 与订阅生成器实时暴露各槽位状态。
-  - **Sing-box 服务端多出站与多入站用户动态注入**：`setup_singbox.sh` 步骤 8.2 动态加载国家矩阵槽位，自适应注入 `resi-us-out`、`resi-jp-out` 以及各协议国家专属用户（`residential-us-user`、`residential-jp-user`）与分流路由；
-  - **客户端聚合订阅生成引擎协同升级**：`generate_subs.py` 全生态生成包含 `[住宅-家宽·美国]`、`[住宅-家宽·日本]` 的 Base64、Clash Meta 与 Sing-box 客户端订阅，客户端策略组（Selector）全自动纳管国家矩阵选流。
-- 🩺 **全阶段独立复检与红蓝对抗自动化单元测试**：
-  - 新增 `tests/test_phase1_security_conn.py`（5/5 PASS）；
-  - 新增 `tests/test_phase2_prescreen_cooldown.py`（3/3 PASS）；
-  - 新增 `tests/test_phase3_multislot_subs.py`（4/4 PASS）；
-  - 质量门禁 `scripts/code_gate.py` 全绿通过，0 个 P0/P1 阻塞性缺陷。
+#### 🌟 V1.6.0 (2026-10-30 16:45:00 CST) - Sing-box Native Multi-Country Residential Matrix & Production-Grade Security Engine
+- 🛡️ **Phase 1: Security Sanitization & Downstream Socket Termination**:
+  - **OpenVPN Whitelist Sanitization & Anti-RCE Defense (`sanitize_ovpn_config`)**: Implemented directive whitelist `SAFE_OVPN_DIRECTIVES` and inline block whitelist `SAFE_OVPN_INLINE_BLOCKS` inspired by `OpenMili/aimili-vpngate`. Strips all dangerous hooks (`up/down/script-security/plugin/tls-verify`) to block privilege escalation and arbitrary code execution from untrusted nodes;
+  - **Active Downstream Blackhole Socket Disconnection (`ConnRegistry`)**: Built connection tracker model inspired by `Guli-Joy/aimili-vpngate`. Actively invokes `close_all()` on dead client sockets upon node switching or IP drift, triggering client TCP stacks to instantly reconnect without hanging for tens of seconds.
+- 🚀 **Phase 2: Concurrent Non-Blocking Prescreening & Cooldown Penalty Pool**:
+  - **Concurrent Non-Blocking TCP Port Prescreening (`tcp_prescreen_nodes`)**: High-concurrency 0.8s port probing inspired by `Guli-Joy/aimili-vpngate`, eliminating 40%~60% of dead nodes within milliseconds and speeding up candidate selection by 5~10x (UDP nodes pass through automatically);
+  - **1800-Second Cooldown Penalty Pool for Half-Dead Nodes (`NodeCooldownPool`)**: Enforces a 30-minute cooldown on zombie nodes that complete the OpenVPN handshake but fail to reach the internet or suffer immediate IP flapping, permanently breaking reconnect loops.
+- 🌐 **Phase 3: Sing-box Native Multi-Country Residential Matrix**:
+  - **Netns Multi-Slot Bridge Manager (`AimiliMultiSlotManager` & `ResidentialSlot`)**: Physical network isolation across multiple country slots:
+    - **Slot 0**: `127.0.0.1:8500` (Global optimal residential egress, namespace `aimili_ns_0`, 100% backward compatible);
+    - **Slot 1**: `127.0.0.1:8502` (US dedicated residential egress `US`, namespace `aimili_ns_1`);
+    - **Slot 2**: `127.0.0.1:8503` (Japan dedicated residential egress `JP`, namespace `aimili_ns_2`);
+    - Atomic state persistence and recovery via `slots_state.json`.
+  - **Sing-box Server Multi-Outbound & Multi-User Injection**: `setup_singbox.sh` dynamically injects `resi-us-out`, `resi-jp-out`, and country-dedicated users (`residential-us-user`, `residential-jp-user`) with dedicated routing rules;
+  - **Aggregated Client Subscription Engine Upgrade**: `generate_subs.py` generates full-platform Base64, Clash Meta, and Sing-box subscriptions with dedicated country selectors (`🇺🇸 美国住宅家宽` and `🇯🇵 日本住宅家宽`).
+- 🩺 **Automated Unit Tests & Code Gate Quality Assurance**:
+  - Added `tests/test_phase1_security_conn.py` (5/5 PASS);
+  - Added `tests/test_phase2_prescreen_cooldown.py` (3/3 PASS);
+  - Added `tests/test_phase3_multislot_subs.py` (4/4 PASS);
+  - Code Gate (`scripts/code_gate.py`) passed with zero P0/P1 defects.
 
-#### 🔒 V1.5.1 (2026-10-28 17:15:00 CST) - 全生态订阅防暴破防扫描与全链路容错闭环
-- 🔒 **18443 订阅中心安全加固**：全面引入 `sub_<token>/` 随机安全路径，屏蔽根路径暴力扫描与 UUID 泄露（公网全网扫描器直接探测根路径严格返回 404）；
-- 🛡️ **WARP 出站零黑洞**：彻底重构 Cloudflare WARP 注册容错机制，API 失败时杜绝注入未生效虚假凭据，保障直连主出站零损伤；
-- ⚡ **DNS 智能探针异步化**：`generate_subs.py` 引入带 1.5 秒硬超时的线程池并发探测，杜绝在极端弱网环境下的进程阻塞；
-- 🩺 **监控假阴性与安装容错闭环**：`check_health.sh` 纳管动态家宽健康退出码，`install.sh` 强化异常陷阱，确保部署总结与面板凭证始终可靠输出。
+#### 🔒 V1.5.1 (2026-10-28 17:15:00 CST) - Subscription Hub Anti-Bruteforce Hardening & Resilient Fallback Loop
+- 🔒 **Port 18443 Subscription Center Hardening**: Introduced randomized `sub_<token>/` path, returning 404 to root scanners to prevent brute-force attacks and UUID leaks;
+- 🛡️ **Zero-Blackhole WARP Outbound**: Refactored Cloudflare WARP registration fallback to prevent injecting unverified credentials and damaging direct gigabit egress;
+- ⚡ **Asynchronous DNS Probe**: Threadpool DNS resolution with 1.5s timeout in `generate_subs.py` preventing blocking under adverse network conditions;
+- 🩺 **Diagnostic False-Negative Fixes**: Hardened exit codes in `check_health.sh` and trap error handling in `install.sh`.
 
-#### 🌟 V1.5.0 (2026-10-27 14:30:00 CST) - 工业级 Linux Netns 物理网络隔离与家宽调度重构版
-- 🛡️ **Linux Netns 物理网络隔离**：引入独立网络命名空间（`aimili_ns_*`）与专用 `veth-pair` 子网（`10.99.<slot>.0/24`），将 OpenVPN 拨号进程绝对限制在隔离空间内部；**母机物理网卡（`eth0`）与默认网关 100% 保持完好，彻底终结了母机掉线与 SSH 失联的行业顽疾**；
-- 🏠 **真实家宽精准过滤算法**：借鉴 `fanout` 设计，通过 `is_residential` 算法严格排除 `public-vpn-*` 域名，并通过 CIDR 掩码物理剔除筑波大学官方学术机房网段（`219.100.37.0/24`），确保出站 100% 走海外居民宽带；
-- ⚡ **多源容灾池与并发竞发建连**：官方 API 阻断或超时（>10s）自动无缝切换至 Cloudflare Worker 镜像源（`https://p.xy.kg/vpngate`）；`RaceConditionScheduler` 并发探测多候选节点，先到先赢，换线耗时缩短至 3~5 秒，15 秒周期持续巡检与 IP 漂移自动无感自愈；
-- 🔧 **动态链接器加固与防损坏规范**：建立 Linux 文本清洗规范，严禁对 ELF 二进制动态链接库执行 `sed -i`，保障所有 compiled C-Python `.so` 模块在 Ubuntu 24.04 (Python 3.12) 环境下零崩溃安全加载；
-- 🩺 **全链路诊断工具升级 (`check_health.sh`)**：全协议矩阵 10 大核心网络端口（443, 8443, 8444, 8445, 8446, 18443, 8500, 8501）监听检测，集成客户端 -1 超时排错指南与住宅出站真实性检测；
-- 🚀 **海外真机部署全绿验收**：在真实 Ubuntu 24.04 LTS (x86_64, Linux 6.8 内核) 服务器上完成三阶段全流程闭环验证，自动化质量门禁 `scripts/code_gate.py` 全绿通过。
+#### 🌟 V1.5.0 (2026-10-27 14:30:00 CST) - Industrial Linux Netns Physical Isolation & Residential Dispatch Redesign
+- 🛡️ **Linux Netns Physical Network Isolation**: Confined OpenVPN dialers inside independent network namespaces (`aimili_ns_*`) with dedicated `veth-pair` subnets (`10.99.<slot>.0/24`), ensuring host physical NIC (`eth0`) and default gateway remain 100% intact with zero SSH dropouts;
+- 🏠 **Real Residential IP Qualification (`is_residential`)**: Excluded `public-vpn-*` domains and CIDR masked Tsukuba University academic subnets (`219.100.37.0/24`) to guarantee pure residential ISP egress;
+- ⚡ **Multi-Source Failover & Concurrent Racing Scheduler**: Dual-source failover to Cloudflare Worker mirror (`https://p.xy.kg/vpngate`); `RaceConditionScheduler` probes multiple candidate nodes concurrently, reducing switch times to 3~5s with 15s health self-healing;
+- 🔧 **Dynamic Linker ELF Protection**: Linux text sanitization safeguards preventing `sed -i` damage to compiled C-Python `.so` binaries on Ubuntu 24.04 (Python 3.12);
+- 🩺 **Full-Stack Health Diagnostics (`check_health.sh`)**: Monitored 10 core service ports (443, 8443, 8444, 8445, 8446, 18443, 8500, 8501) with residential egress authenticity verification.
 
-#### 📦 V1.4.8 (2026-10-23 18:20:00 CST) - 架构可靠性与 Code Gate V2.0 加固版
-- 修复 local-dns `detour: direct` 启动崩溃缺陷；
-- 彻底解决 Sing-box 国内规则集启动死锁，转为高可用本地内联分流规则并开启 `cache_file`；
-- 升级 `scripts/code_gate.py` 质量门禁，增加 Sing-box run 2 秒真机常驻冒烟测试。
+#### 📦 V1.4.8 (2026-10-23 18:20:00 CST) - Architectural Reliability & Code Gate V2.0 Hardening
+- Fixed local-dns `detour: direct` startup crash;
+- Resolved Sing-box ruleset startup deadlocks by switching to high-availability local inline routing rules with `cache_file`;
+- Upgraded `scripts/code_gate.py` with 2-second Sing-box run smoke test verification.
 
 ---
 
