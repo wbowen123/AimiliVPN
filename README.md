@@ -5,9 +5,9 @@ Bilingual: [中文](#中文) | [English](#english)
 本项目基于 AimiliVPN 深度定制，原生整合 **Sing-box** 现代化代理核心，在 Linux VPS 上实现：
 1. **模块化排列组合一键部署 (Modular Permutation Installer)**：安装第 1 步提供清晰交互式选项，支持【全套旗舰版】、【仅原生直连五协议】、【仅Aimili动态住宅家宽网桥】、【直连+自适应WARP】、【直连+动态家宽】、【仅订阅分发中心】及【高级自定义按需勾选】，满足不同配置 VPS 的极致轻量与全能需求；
 2. **Cloudflare WARP 自适应流媒体与 AI 智能免装引擎**：基于 Sing-box 原生 WireGuard 用户态出站，安装时自动探测 IPv4/IPv6 原生 IP 解锁能力。**若原生 IP 已 100% 解锁 ChatGPT/Netflix/Disney+/TikTok，则智能放弃安装 WARP**，保持纯千兆直连；若部分受阻，则精准针对未解锁网站挂载 WARP，**严格隔离住宅出口（家宽 100% 走纯正家宽，绝不被机房 WARP 劫持）**；
-3. **全协议双栈双出站分流架构 (Dual-Stack Dual-Outbound Matrix)**：单节点支持 **VLESS-Reality、Hysteria 2、TUIC v5、AnyTLS、VMess-xHTTP** 5 大主流协议，全面支持 **IPv4 与 IPv6 原生双栈**，一键下发包含 **“原生 VPS 高速直连”**、**“Aimili 动态住宅家宽穿透”** 与 **“Cloudflare CDN/Argo 优选穿透”** 的 18 节点双栈矩阵完整订阅；
-4. **全生态全格式聚合订阅与终端扫码**：原生输出通用 Base64 (`sub.txt`)、Sing-box 原生 1.10+ JSON (`singbox.json` 内置 Smart-DNS 与分流规则)、Clash Meta / Mihomo (`clash.yaml` 内置自动测速优选与故障转移策略组) 及明文单节点列表 (`nodes.txt`)；部署完成时直接在终端渲染 **ASCII 双色二维码**，手机客户端（小火箭 / Sing-box）扫码一键导入；
-5. **节点健康状态与端口连通性实时自检**：安装结束时全自动对 VLESS-Reality (443)、Hysteria 2 (443)、TUIC (8443)、AnyTLS (8444)、VMess (8445)、Aimili SOCKS5 (8500)、Nginx 订阅 (18443) 展开端口监听与链路状态诊断，即时输出 `[ OK ]` 健康清单；
+3. **全协议双栈多国矩阵分流架构 (Dual-Stack & Multi-Country Egress Matrix)**：单节点支持 **VLESS-Reality、Hysteria 2、TUIC v5、AnyTLS、VMess-xHTTP** 5 大主流协议，全面支持 **IPv4 与 IPv6 原生双栈**，一键下发包含 **“原生 VPS 高速直连”**、**“Aimili 动态住宅家宽穿透 (全球/美/日多国矩阵)”** 与 **“Cloudflare CDN/Argo 优选穿透”** 的 **18~24+ 节点双栈多国矩阵完整订阅**；
+4. **全生态全格式聚合订阅与终端扫码**：原生输出通用 Base64 (`sub.txt`)、Sing-box 原生 1.10+ JSON (`singbox.json` 内置 Smart-DNS 与分流规则)、Clash Meta / Mihomo (`clash.yaml` 内置自动测速优选与故障转移策略组) 及明文单节点列表 (`nodes.txt`)；部署完成时直接在终端渲染 **ASCII 双色二维码**，手机客户端（小火箭 / Sing-box）扫码一键导入 18~24+ 节点；
+5. **节点健康状态与端口连通性实时自检**：安装结束时全自动对 VLESS-Reality (443)、Hysteria 2 (443)、TUIC (8443)、AnyTLS (8444)、VMess (8445)、Aimili SOCKS5 (8500/8502/8503)、Nginx 订阅 (18443) 展开端口监听与链路状态诊断，即时输出 `[ OK ]` 健康清单；
 6. **脚本智能更新与配置平滑迁移系统 (`ml update`)**：一键检测 GitHub 仓库最新 Commit 与版本，展示前后版本对比、更新内容日志、文件变动统计与配置零丢失安全说明，支持交互式确认是否升级，升级过程自动备份现有配置并平滑热重载；
 7. **Cloudflare 全生态无缝集成**：
    - ☁️ **Argo 隧道穿透**：支持 Quick Tunnel (免CF账号临时穿透) 与 Named Token 固定隧道，破除 NAT、无公网 IP 限制；
@@ -51,8 +51,8 @@ Bilingual: [中文](#中文) | [English](#english)
 * **架构基石**：Sing-box 1.14+ 代理矩阵 × Linux Netns 物理网络隔离 × 多国家动态住宅出口矩阵
 
 系统由四大核心模块协同运作：
-- **前端多协议代理矩阵（Sing-box）**：监听 443 (TCP Reality & UDP Hy2)、8443 (UDP TUIC)、8444 (TCP AnyTLS)、8445 (TCP VMess)，通过用户鉴权（`auth_user`）实现毫秒级双出站分流。
-- **后端动态住宅网桥（AimiliVPN Netns 引擎）**：基于 Linux Network Namespace 隔离运行，维护全球真实住宅节点池，并在 `127.0.0.1:8500` 提供绝对安全的 SOCKS5 出站网桥。
+- **前端多协议代理矩阵（Sing-box）**：监听 443 (TCP Reality & UDP Hy2)、8443 (UDP TUIC)、8444 (TCP AnyTLS)、8445 (TCP VMess)，通过用户鉴权（`auth_user`）实现毫秒级双出站与多国家矩阵分流。
+- **后端动态住宅网桥矩阵（AimiliVPN Netns 引擎）**：基于 Linux Network Namespace 物理隔离运行，维护全球及多国独享住宅节点池，在本地提供绝对安全的 SOCKS5 出站网桥矩阵（槽位 0 `127.0.0.1:8500` 全球最优、槽位 1 `8502` 美国住宅、槽位 2 `8503` 日本住宅）。
 - **全生态订阅分发与 Web 控制中心（Nginx）**：在 18443 端口集中托管 `sub.txt`、`singbox.json`、`clash.yaml`、`nodes.txt`，并在 8443 端口提供带防探测随机后缀的可视化管理面板。
 - **自愈巡检与自动化门禁体系（Code Gate V2.0 & check_health.sh）**：提供从代码 AST 级静态拓扑门禁到实机 10 大核心端口实时自检排错的全套生产级稳态保障。
 
@@ -99,17 +99,52 @@ Bilingual: [中文](#中文) | [English](#english)
 
 ---
 
+### 1.2 【V1.6.0 架构升华】Sing-box 原生多国家住宅出口矩阵与生产级安全稳态引擎
+
+在 V1.5.0 单一 8500 住宅出口物理隔离的基础上，V1.6.0 深度融合业界前沿开源最佳实践，完成了从“单点动态家宽”向**“生产级多国家住宅出口矩阵与主动稳态系统”**的跃升：
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                Linux VPS 物理主机 (Host / eth0)                              │
+│                                                                                              │
+│  [Sing-box 多协议网关] ─── auth_user 鉴权 ───┬─> [direct-user] ──────────> VPS 原生千兆物理直连
+│  (TCP 443 / UDP 443 / 8443 / 8444 / 8445)     ├─> [residential-user] ────> 127.0.0.1:8500 ──┐
+│                                               ├─> [residential-us-user] ─> 127.0.0.1:8502 ──┼─┐
+│                                               └─> [residential-jp-user] ─> 127.0.0.1:8503 ──┼─┼─┐
+│                                                                                              │ │ │
+│  ════════════════════════════════════════════════════════════════════════════════════════════╪═╪═╪══
+│  [物理隔离 Linux Netns 多槽位矩阵]                                                           │ │ │
+│  ├── 槽位 0 [aimili_ns_0] (10.99.0.2) ──> [OpenVPN] ──> 🌐 全球最优动态住宅家宽出口 <────────┘ │ │
+│  ├── 槽位 1 [aimili_ns_1] (10.99.1.2) ──> [OpenVPN] ──> 🇺🇸 美国独享住宅家宽出口 (US) <─────────┘ │
+│  └── 槽位 2 [aimili_ns_2] (10.99.2.2) ──> [OpenVPN] ──> 🇯🇵 日本独享住宅家宽出口 (JP) <───────────┘
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 核心三大演进阶段：
+1. **阶段一：生产级安全白名单清洗与下游黑洞连接主动切断（Phase 1）**
+   - **OpenVPN 指令与内联块白名单清洗 (`sanitize_ovpn_config`)**：借鉴 `OpenMili/aimili-vpngate` 防御体系，建立 `SAFE_OVPN_DIRECTIVES` 与 `SAFE_OVPN_INLINE_BLOCKS` 白名单，物理剥离第三方配置中的 `up/down/script-security/plugin/tls-verify` 等高危脚本挂钩，从根源杜绝未授权脚本执行与提权风险；
+   - **下游黑洞 Socket 主动切断机制 (`ConnRegistry`)**：借鉴 `Guli-Joy/aimili-vpngate` 连接追踪理念，维护活跃下游 Socket 注册表。主节点断开或换线自愈时，网桥主动调用 `close_all()` 强制掐断死连接，促使客户端 TCP 栈毫秒级感知中断并立即重建新连接，彻底消灭切换时长达数十秒的无网卡死。
+2. **阶段二：非阻塞并发 TCP 端口毫秒级预筛与假活节点冷却防抖（Phase 2）**
+   - **非阻塞并发 TCP 端口预筛 (`tcp_prescreen_nodes`)**：借鉴 `Guli-Joy/aimili-vpngate` 分层预检思路，多线程以 0.8s 硬超时并发探测候选节点目标端口，毫秒级快速淘汰 40%~60% 的死端口节点，候选池筛选与建连测速效率提升 5~10 倍；
+   - **假活与僵尸节点 1800 秒惩罚冷却池 (`NodeCooldownPool`)**：借鉴 `Guli-Joy/aimili-vpngate` 防抖机制，对“OpenVPN 握手成功但无法出网获取出口公网 IP 或 IP 瞬间漂移”的假活节点，实施 1800 秒（30分钟）硬性冷却惩罚，换线时自动规避，到期无感解冻，彻底杜绝自愈死循环换线。
+3. **阶段三：Netns 多槽位独立网桥与 Sing-box 原生多国家住宅出口矩阵（Phase 3）**
+   - **多槽位物理隔离调度器 (`AimiliMultiSlotManager` & `ResidentialSlot`)**：实现槽位 0 (`127.0.0.1:8500` 全球最优)、槽位 1 (`8502` 美国独享住宅)、槽位 2 (`8503` 日本独享住宅)，各槽位拥有独立的 Netns 命名空间、子网分配与 OpenVPN 实例，并通过 `slots_state.json` 实现原子持久化；
+   - **Sing-box 服务端多出站与入站用户自适应动态注入**：`setup_singbox.sh` 自动读取槽位状态，向 Sing-box 动态注入 `resi-us-out`、`resi-jp-out` 以及各协议国家专属用户（`residential-us-user`、`residential-jp-user`）与分流路由规则；
+   - **客户端多国矩阵订阅与自动策略组**：`generate_subs.py` 协同下发美日独立住宅节点，并在 Clash Meta 与 Sing-box 订阅中内置专用的国家策略组，客户端订阅无缝从 18 节点扩展至 **18~24+ 节点全矩阵**！
+
+---
+
 ### 2. 模块化排列组合安装模式
 
 在安装脚本第一步，系统提供详细的排列组合交互选项，用户可按需选择：
 
 | 选项编号 | 模式名称 | 包含组件 | 内存开销 | 适用场景 |
 | :--- | :--- | :--- | :--- | :--- |
-| **[1] (默认推荐)** | **🌟 全套旗舰尊享版** | 原生直连五协议 + Aimili动态家宽 + 自适应WARP + 伪装站 + 全格式聚合订阅 | ~150MB | 需要兼顾千兆低延迟极速、流媒体与AI完美解锁、跨境抗封锁的全能用户 |
+| **[1] (默认推荐)** | **🌟 全套旗舰尊享版** | 原生直连五协议 + Aimili动态家宽多国矩阵 + 自适应WARP + 伪装站 + 全格式聚合订阅 | ~150MB | 需要兼顾千兆低延迟极速、流媒体与AI完美解锁、跨境抗封锁的全能用户 |
 | **[2]** | **🚀 仅安装 极速原生直连代理矩阵** | VLESS-Reality / Hysteria 2 / TUIC v5 / AnyTLS / VMess-xHTTP | **< 50MB** | 搬瓦工/甲骨文低配 VPS，不跑家宽后台，CPU零空载，追求极致轻量与极速看 4K |
-| **[3]** | **🏠 仅安装 Aimili 动态住宅家宽网桥** | SOCKS5 127.0.0.1:8500 虚拟隧道池 + 8443 可视化管理控制台 | ~80MB | 已有自建节点（如 Xray/九合一），仅需在 VPS 上增设动态住宅出口落地 |
+| **[3]** | **🏠 仅安装 Aimili 动态住宅家宽网桥矩阵** | SOCKS5 127.0.0.1:8500/8502/8503 虚拟多国隧道池 + 8443 可视化管理控制台 | ~80MB | 已有自建节点（如 Xray/九合一），仅需在 VPS 上增设动态住宅出口矩阵落地 |
 | **[4]** | **⚡ 组合: 原生直连 + 自适应 WARP 解锁** | Sing-box 原生五协议 + Cloudflare WARP 自适应解锁引擎 (不含家宽) | ~60MB | 原生 IP 被流媒体阻断但无需家宽轮转，兼顾低开销与 100% 流媒体/AI 原生解锁 |
-| **[5]** | **🌐 组合: 原生直连 + Aimili 动态住宅家宽** | Sing-box 原生五协议 + Aimili 动态住宅网桥 (不含 WARP) | ~140MB | 直连走机房 IP，住宅走真实家宽，无需 Cloudflare 介入，保证原生与住宅 IP 纯洁度 |
+| **[5]** | **🌐 组合: 原生直连 + Aimili 动态住宅家宽矩阵** | Sing-box 原生五协议 + Aimili 动态住宅网桥 (不含 WARP) | ~140MB | 直连走机房 IP，住宅走真实家宽，无需 Cloudflare 介入，保证原生与住宅 IP 纯洁度 |
 | **[6]** | **📦 仅安装 独立聚合订阅系统与 Web 后台** | Nginx 18443 订阅中心 (sub/clash/singbox) + 8443 HTTPS 面板 | ~30MB | 仅用于托管现有节点或作为多格式订阅转换分发服务器 |
 | **[7]** | **🛠️ 自定义高级组合自由勾选** | 交互式自选: ①直连五协议 ②动态家宽 ③自适应WARP ④伪装站 ⑤BBR优化 | 按需 | 高级极客自定义安装组合 |
 | **[8]** | **🗑️ 完全卸载 AimiliVPN 及所有关联组件** | 彻底清理服务、端口放行、网卡、路由表与文件 | 0MB | 干净无残留卸载 |
@@ -155,7 +190,7 @@ Bilingual: [中文](#中文) | [English](#english)
 | **VMess-xHTTP** | `8445/tcp` | TCP (HTTP/3 分块) | 标准分段 HTTP 流，防封锁与审查 |
 | **HTTPS 管理后台** | `8443/tcp` | TCP, Nginx 反代 8501 | 可视化管理面板，支持国家/节点切换与安全后缀 |
 | **全格式订阅入口** | `18443/tcp` | TCP, Nginx 静态托管 | 提供 `sub.txt`、`clash.yaml`、`singbox.json`、`nodes.txt` |
-| **住宅出站网桥** | `8500/tcp` | 本机 `127.0.0.1` | 内置 Aimili 动态家宽池或外部第三方 SOCKS5 落地 |
+| **动态住宅网桥矩阵** | `8500` (槽位0·全球) / `8502` (槽位1·美国) / `8503` (槽位2·日本) | 本机 `127.0.0.1` | Linux Netns 物理网络隔离的多槽位动态住宅家宽出站矩阵，支持多国独享分流 |
 
 ---
 
@@ -173,7 +208,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/insta
 
 ```bash
 ml          # 启动全新交互式双核心管理控制台（支持 21 项专业运维）
-ml sub      # 终端打印全协议 18 节点矩阵、全格式聚合订阅卡片与扫码二维码
+ml sub      # 终端打印全协议 18~24+ 节点矩阵、全格式聚合订阅卡片与扫码二维码
 ml qr       # 📱 终端直接渲染 ASCII 双色二维码 (手机小火箭 / Sing-box 扫码一键导入)
 ml web      # 查看网页控制面板地址、安全后缀、管理员账号与密码
 ml test     # 全自动节点连通性与健康诊断（排查 -1 超时、端口监听与阻断根因）
@@ -187,7 +222,7 @@ ml tg       # Telegram Bot 节点下发与异常实时告警配置
 ml cron     # 定时系统自愈、凌晨内存释放与 15 分钟看门狗管理
 ml dns      # 📖 Cloudflare IPv4/IPv6 双栈解析与子域名隔离配置向导
 ml egress   # 配置住宅出口模式（内置Aimili家宽池 / 外接第三方商业SOCKS5）
-ml status   # 查看 AimiliVPN 运行状态与当前活跃住宅节点
+ml status   # 查看 AimiliVPN 多槽位运行状态与当前活跃住宅节点
 ml logs     # 查看 AimiliVPN 实时拨号与隧道日志
 ml restart  # 重启 AimiliVPN 住宅网关
 ml singbox  # Sing-box 核心管理（start/stop/restart/logs/status）
@@ -204,23 +239,23 @@ ml singbox  # Sing-box 核心管理（start/stop/restart/logs/status）
    - 支持客户端自适应解析节点类型与混淆参数。
 2. **📦 Sing-box 原生 1.10+ JSON 订阅 (`/singbox.json`)**：
    - 适配客户端：**Sing-box 官方客户端 (Android / iOS / Windows / macOS)**；
-   - 原生内置 Smart-DNS 分流规则、本地直连与 `🎯 手动选择`、`🚀 极速原生 (自动优选)`、`🏠 住宅家宽 (自动优选)`、`⚡ 故障转移` 策略组，开箱即用无需转换。
+   - 原生内置 Smart-DNS 分流规则、本地直连与 `🎯 手动选择`、`🚀 极速原生 (自动优选)`、`🏠 住宅家宽 (自动优选)`、`🇺🇸 美国住宅家宽 (选流)`、`🇯🇵 日本住宅家宽 (选流)`、`⚡ 故障转移` 策略组，开箱即用无需转换。
 3. **🐱 Clash Meta (Mihomo) YAML 订阅 (`/clash.yaml`)**：
    - 适配客户端：**Clash Verge Rev**、**Mihomo Party**、**Clash Nyanpasu**、**CFW**；
-   - 内置健康测速分组（Urltest 自动选择延迟最低节点）与故障转移分组（Fallback 自动剔除异常节点）。
+   - 内置健康测速分组（Urltest 自动选择延迟最低节点）、故障转移分组（Fallback 自动剔除异常节点）与专属国家策略组（`🇺🇸 美国住宅家宽`、`🇯🇵 日本住宅家宽`）。
 4. **📄 Plaintext 原始节点列表 (`/nodes.txt`)**：
    - 纯文本单链接格式，便于手动复制单节点到剪贴板或单独分享给朋友。
 5. **📱 终端 ASCII 二维码扫码 (`ml qr` 或 `ml sub`)**：
    - 部署完成或在终端运行 `ml qr`，屏幕立即打印高对比度半高字符二维码；
-   - 手机打开 Shadowrocket 或 Sing-box 扫描屏幕即可自动识别并批量导入 18 个节点，彻底告别手动复制长链接的繁琐！
+   - 手机打开 Shadowrocket 或 Sing-box 扫描屏幕即可自动识别并批量导入 18~24+ 个节点，彻底告别手动复制长链接的繁琐！
 
 ---
 
-### 7. 完整 18 节点双栈矩阵清单
+### 7. 完整 18~24+ 节点双栈多国矩阵清单
 
-所有节点名称均严格遵循**【出站属性 + 协议名称 + 传输特征 + 网络栈】**四维规范：
+所有节点名称均严格遵循**【出站属性 + 协议名称 + 传输特征 + 网络栈】**四维规范。基础部署默认下发 18 节点；开启多国家住宅矩阵后，自动下发包含美日独立住宅的 24+ 全矩阵：
 
-#### 【A 组：IPv4 原生直连与住宅节点】（直连 VPS 物理 IPv4）
+#### 【A 组：IPv4 原生直连与全球住宅节点】（直连 VPS 物理 IPv4）
 1. `🚀 [直连-极速·IPv4] VLESS-Reality【TCP-Vision·原生千兆】`
 2. `🏠 [住宅-家宽·IPv4] VLESS-Reality【TCP-Vision·Aimili动态家宽】`
 3. `🌪️ [直连-极速·IPv4] Hysteria 2【H3-UDP-Brutal·暴力抗丢包】`
@@ -244,7 +279,17 @@ ml singbox  # Sing-box 核心管理（start/stop/restart/logs/status）
 17. `⛅ [CDN-小黄云·IPv4] VMess-WS-TLS【Cloudflare-CDN·小黄云破墙】`（经典 WebSocket 小黄云破墙）
 18. `⛅ [CDN-小黄云·IPv6] VMess-xHTTP【Cloudflare-CDN-IPv6·分块穿透】`（Cloudflare Anycast IPv6 优选穿透）
 
-> 💡 **客户端协议兼容性说明**：AnyTLS (节点 7 & 8) 属于 Sing-box 官方专有防探测混淆协议，原生支持在 `sub.txt`、`singbox.json` 及 `nodes.txt` 订阅中下发；由于 Clash / Mihomo 官方尚未合并 AnyTLS 协议，`clash.yaml` 自动下发其余 16 个高可用节点，保障不同客户端的最佳兼容性。
+#### 【D 组：多国家独享住宅家宽矩阵节点 (V1.6.0 架构升级)】（Netns 物理多槽位隔离，按需下发）
+19. `🏠 [住宅-家宽·美国住宅] VLESS-Reality【TCP-Vision·US住宅】`（槽位 1 独享美国家宽，物理 Netns 隔离）
+20. `🏘️ [住宅-家宽·美国住宅] Hysteria 2【H3-UDP-Brutal·US住宅加速】`（暴力抗丢包，海外低风控 AI / 流媒体专用）
+21. `🏡 [住宅-家宽·美国住宅] TUIC v5【H3-QUIC-0RTT·US住宅流媒体】`（0-RTT 极速秒开美国家宽）
+22. `🏠 [住宅-家宽·日本住宅] VLESS-Reality【TCP-Vision·JP住宅】`（槽位 2 独享日本家宽，物理 Netns 隔离）
+23. `🏘️ [住宅-家宽·日本住宅] Hysteria 2【H3-UDP-Brutal·JP住宅加速】`（专供日本本土流媒体、游戏与超低延迟）
+24. `🏡 [住宅-家宽·日本住宅] TUIC v5【H3-QUIC-0RTT·JP住宅流媒体】`（0-RTT 极速秒开日本家宽）
+
+> 💡 **客户端协议兼容性与分流策略说明**：
+> 1. **AnyTLS (节点 7 & 8)**：属于 Sing-box 专有防探测混淆协议，原生支持在 `sub.txt`、`singbox.json` 及 `nodes.txt` 订阅中下发；由于 Clash / Mihomo 官方尚未合并 AnyTLS 协议，`clash.yaml` 自动智能剔除 AnyTLS 节点，保障不同客户端的最佳兼容性；
+> 2. **多国家矩阵策略组 (D 组)**：在生成的 Clash Meta (`clash.yaml`) 与 Sing-box (`singbox.json`) 订阅中，自动内置独立的 **`🇺🇸 美国住宅家宽`** 与 **`🇯🇵 日本住宅家宽`** 策略组，客户端分流规则支持一键定向分流，无需手动选线！
 
 
 ---
@@ -350,12 +395,12 @@ ml singbox  # Sing-box 核心管理（start/stop/restart/logs/status）
 
 ### 1. System Overview
 
-**Aimili VPN + Sing-box | Full-Protocol Dual-Stack Dual-Outbound Matrix (V1.6.0)**
+**Aimili VPN + Sing-box | Full-Protocol Dual-Stack & Multi-Country Matrix (V1.6.0)**
 * **Current Version**: `V1.6.0` | **Release Timestamp**: `2026-10-30 16:45:00 CST`
 
-This system combines the cutting-edge ingress proxy matrix of **Sing-box** with the dynamic residential egress of **AimiliVPN** (powered by Linux Network Namespace physical isolation) and an automated multi-format subscription hub:
-- **Ingress Proxy Matrix (Sing-box)**: Delivers 5 major protocols on ports 443 (TCP Reality & UDP Hy2), 8443 (UDP TUIC), 8444 (TCP AnyTLS), and 8445 (TCP VMess). Fully supports **IPv4 & IPv6 dual-stack**, using user-level authentication (`auth_user`) to achieve instantaneous zero-downtime dual-outbound routing.
-- **Residential Egress Netns Engine (AimiliVPN V1.5.0)**: Dynamically maintains global residential relay tunnels isolated in dedicated Linux network namespaces, preventing host default gateway hijacking while providing a local SOCKS5 bridge on `127.0.0.1:8500`.
+This system combines the cutting-edge ingress proxy matrix of **Sing-box** with the dynamic residential egress matrix of **AimiliVPN** (powered by Linux Network Namespace physical isolation across multiple country slots) and an automated multi-format subscription hub:
+- **Ingress Proxy Matrix (Sing-box)**: Delivers 5 major protocols on ports 443 (TCP Reality & UDP Hy2), 8443 (UDP TUIC), 8444 (TCP AnyTLS), and 8445 (TCP VMess). Fully supports **IPv4 & IPv6 dual-stack**, using user-level authentication (`auth_user`) to achieve instantaneous zero-downtime dual-outbound and multi-country routing.
+- **Residential Egress Netns Engine (AimiliVPN V1.6.0)**: Dynamically maintains global and country-dedicated residential relay tunnels isolated in dedicated Linux network namespaces, preventing host default gateway hijacking while providing a local SOCKS5 bridge matrix (`127.0.0.1:8500` for global optimal, `8502` for US, `8503` for Japan).
 - **Unified Subscription & Web Control Hub (Nginx)**: Serves `sub.txt`, `singbox.json`, `clash.yaml`, and `nodes.txt` on port 18443, while hosting an obfuscated HTTPS administration panel on port 8443.
 
 ---
@@ -366,11 +411,11 @@ At Step 1 of `install.sh`, the installer offers clear, interactive permutation c
 
 | Mode | Name | Components Included | RAM Footprint | Use Case |
 | :--- | :--- | :--- | :--- | :--- |
-| **[1] (Default)** | **🌟 Flagship All-in-One** | Direct 5 Protocols + Aimili Residential + Adaptive WARP + Camouflage + Subscriptions | ~150MB | Ultimate power users needing gigabit direct speed, streaming/AI unlock, and residential anti-fraud |
+| **[1] (Default)** | **🌟 Flagship All-in-One** | Direct 5 Protocols + Aimili Multi-Country Residential Matrix + Adaptive WARP + Camouflage + Subscriptions | ~150MB | Ultimate power users needing gigabit direct speed, streaming/AI unlock, and residential anti-fraud |
 | **[2]** | **🚀 Direct Matrix Only** | VLESS-Reality / Hysteria 2 / TUIC v5 / AnyTLS / VMess-xHTTP | **< 50MB** | Low-spec VPS (128M/512M Bandwagon/Oracle); zero idle CPU load; raw 4K streaming speed |
-| **[3]** | **🏠 Residential Bridge Only** | SOCKS5 127.0.0.1:8500 Virtual Tunnel Pool + 8443 HTTPS Dashboard | ~80MB | Standalone residential gateway for existing proxies (e.g. self-built Xray or other tools) |
+| **[3]** | **🏠 Residential Bridge Matrix Only** | SOCKS5 127.0.0.1:8500/8502/8503 Virtual Multi-Country Tunnel Pool + 8443 HTTPS Dashboard | ~80MB | Standalone residential gateway for existing proxies (e.g. self-built Xray or other tools) |
 | **[4]** | **⚡ Direct + Adaptive WARP** | Sing-box Direct Matrix + Cloudflare WARP Adaptive Unlock (No Residential) | ~60MB | Bypasses streaming blocks without running residential daemon; ultra-low RAM usage |
-| **[5]** | **🌐 Direct + Residential** | Sing-box Direct Matrix + Aimili Residential Bridge (No WARP) | ~140MB | Pure physical and residential routing; avoids Cloudflare WARP intermediary |
+| **[5]** | **🌐 Direct + Residential Matrix** | Sing-box Direct Matrix + Aimili Residential Multi-Country Bridge Matrix (No WARP) | ~140MB | Pure physical and residential routing; avoids Cloudflare WARP intermediary |
 | **[6]** | **📦 Subscription Server Only** | Nginx 18443 Subscription Dispatcher (sub/clash/singbox) + 8443 Dashboard | ~30MB | Centralized node hosting and subscription conversion distribution hub |
 | **[7]** | **🛠️ Custom Modular Selection** | Interactive checklist: Direct, Residential, Adaptive WARP, Camo, BBR | Custom | Tailored component installation for advanced administrators |
 | **[8]** | **🗑️ Complete Uninstallation** | Clean removal of services, firewall rules, interfaces, routes, and files | 0MB | 100% clean teardown |
@@ -416,7 +461,7 @@ Unlike conventional scripts that unconditionally inject WARP (degrading gigabit 
 | **VMess-xHTTP** | `8445/tcp` | TCP (HTTP/3 Chunks) | Segmented HTTP/3 stream bypassing deep packet inspection |
 | **HTTPS Web Admin** | `8443/tcp` | TCP, Nginx reverse proxy | Visual control panel for country & node switching |
 | **Full Subscriptions** | `18443/tcp` | TCP, Nginx static host | Serves `sub.txt`, `clash.yaml`, `singbox.json`, `nodes.txt` |
-| **Residential Bridge** | `8500/tcp` | `127.0.0.1` | Local Aimili dynamic residential bridge or external SOCKS5 |
+| **Residential Bridge Matrix** | `8500` (Slot 0·Global) / `8502` (Slot 1·US) / `8503` (Slot 2·JP) | Local `127.0.0.1` | Linux Netns physically isolated multi-slot residential egress matrix with dedicated country routing |
 
 ---
 
@@ -432,7 +477,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/wbowen123/AimiliVPN/main/insta
 
 ```bash
 ml          # Launch interactive dual-core management console (21 operations)
-ml sub      # Print 18-node dual-stack matrix, subscription URLs, and QR code
+ml sub      # Print 18-24+ node dual-stack matrix, subscription URLs, and QR code
 ml qr       # 📱 Render terminal ASCII QR code directly (scan with Shadowrocket / Sing-box)
 ml web      # Display web dashboard URL, secret path, and credentials
 ml test     # Run automated health check & troubleshooting for -1 errors
@@ -446,7 +491,7 @@ ml tg       # Telegram Bot notifications & alerts dispatcher
 ml cron     # Automated self-healing, cache flush, and 15-min watchdog
 ml dns      # 📖 Cloudflare IPv4/IPv6 dual-stack DNS setup guide
 ml egress   # Toggle residential egress (internal pool vs external SOCKS5)
-ml status   # View AimiliVPN status and active residential IP
+ml status   # View AimiliVPN multi-slot status and active residential IPs per country
 ml logs     # Tail real-time VPN dialer and tunnel logs
 ml restart  # Restart AimiliVPN residential daemon
 ml singbox  # Sing-box service management (start/stop/restart/logs/status)
@@ -464,21 +509,23 @@ Subscription links available on `https://your-domain-or-ip:18443/`:
    - Client-adaptive format resolution.
 2. **📦 Sing-box Native 1.10+ JSON Subscription (`/singbox.json`)**:
    - Compatible with: **Sing-box Official Client (Android / iOS / Windows / macOS)**;
-   - Features built-in Smart-DNS routing rules, Direct routing, and policy groups: `🎯 手动选择`, `🚀 极速原生 (自动优选)`, `🏠 住宅家宽 (自动优选)`, and `⚡ 故障转移`.
+   - Features built-in Smart-DNS routing rules, Direct routing, and policy groups: `🎯 手动选择`, `🚀 极速原生 (自动优选)`, `🏠 住宅家宽 (自动优选)`, `🇺🇸 美国住宅家宽 (选流)`, `🇯🇵 日本住宅家宽 (选流)`, and `⚡ 故障转移`.
 3. **🐱 Clash Meta (Mihomo) YAML Subscription (`/clash.yaml`)**:
    - Compatible with: **Clash Verge Rev**, **Mihomo Party**, **Clash Nyanpasu**, **CFW**;
-   - Includes automatic latency urltest groups and fallback failover groups.
+   - Includes automatic latency urltest groups, fallback failover groups, and dedicated country selectors (`🇺🇸 美国住宅家宽`, `🇯🇵 日本住宅家宽`).
 4. **📄 Plaintext Node List (`/nodes.txt`)**:
    - Raw single links for easy manual copy/paste or sharing single nodes.
 5. **📱 Terminal ASCII QR Code (`ml qr` or `ml sub`)**:
    - Prints visual ANSI QR code blocks directly in terminal;
-   - Mobile users can point their camera / Shadowrocket app at the screen to import all 18 nodes in 1 second.
+   - Mobile users can point their camera / Shadowrocket app at the screen to import all 18~24+ nodes in 1 second.
 
 ---
 
-### 7. Complete 18-Node Dual-Stack Matrix
+### 7. Complete 18-24+ Node Dual-Stack & Multi-Country Matrix
 
-- **[Group A: IPv4 Direct & Residential]**:
+All node identifiers follow the strict 4D taxonomy: **`[Egress Property + Protocol + Transport Feature + Network Stack]`**. Standard deployments output 18 core nodes, which seamlessly expand to 24+ nodes when the Multi-Country Dedicated Residential Matrix is active:
+
+- **[Group A: IPv4 Direct & Global Residential]**:
   1. `🚀 [直连-极速·IPv4] VLESS-Reality【TCP-Vision·原生千兆】`
   2. `🏠 [住宅-家宽·IPv4] VLESS-Reality【TCP-Vision·Aimili动态家宽】`
   3. `🌪️ [直连-极速·IPv4] Hysteria 2【H3-UDP-Brutal·暴力抗丢包】`
@@ -499,6 +546,17 @@ Subscription links available on `https://your-domain-or-ip:18443/`:
   16. `⛅ [CDN-小黄云·IPv4] VMess-xHTTP【Cloudflare-CDN·分块免流破墙】`
   17. `⛅ [CDN-小黄云·IPv4] VLESS-WS-TLS【Cloudflare-CDN·小黄云破墙】`
   18. `⛅ [CDN-小黄云·IPv6] VMess-xHTTP【Cloudflare-CDN-IPv6·分块穿透】`
+- **[Group D: Multi-Country Dedicated Residential Matrix (V1.6.0 Upgrade)]**:
+  19. `🏠 [住宅-家宽·美国住宅] VLESS-Reality【TCP-Vision·US住宅】` (Slot 1 US Dedicated Residential, Netns Isolated)
+  20. `🏘️ [住宅-家宽·美国住宅] Hysteria 2【H3-UDP-Brutal·US住宅加速】` (UDP Brutal acceleration, optimized for US AI & streaming)
+  21. `🏡 [住宅-家宽·美国住宅] TUIC v5【H3-QUIC-0RTT·US住宅流媒体】` (0-RTT fast handshake for US streaming)
+  22. `🏠 [住宅-家宽·日本住宅] VLESS-Reality【TCP-Vision·JP住宅】` (Slot 2 JP Dedicated Residential, Netns Isolated)
+  23. `🏘️ [住宅-家宽·日本住宅] Hysteria 2【H3-UDP-Brutal·JP住宅加速】` (Low latency for JP gaming and streaming)
+  24. `🏡 [住宅-家宽·日本住宅] TUIC v5【H3-QUIC-0RTT·JP住宅流媒体】` (0-RTT fast handshake for JP media)
+
+> 💡 **Client Compatibility & Routing**:
+> 1. **AnyTLS (Nodes 7 & 8)**: Proprietary obfuscation protocol native to Sing-box clients. Automatically omitted from `clash.yaml` until upstream Mihomo implements support;
+> 2. **Multi-Country Policy Groups (Group D)**: Clash Meta (`clash.yaml`) and Sing-box (`singbox.json`) subscriptions automatically include dedicated policy selectors for `🇺🇸 美国住宅家宽` and `🇯🇵 日本住宅家宽` for one-click country routing.
 
 ---
 
