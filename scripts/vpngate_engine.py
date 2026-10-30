@@ -12,6 +12,7 @@ AimiliVPN 工业级家宽落地与网络命名空间 (netns) 隔离调度引擎
 
 import os
 import sys
+import json
 import base64
 import csv
 import time
@@ -25,6 +26,7 @@ import tempfile
 import shutil
 import ctypes
 import ctypes.util
+import concurrent.futures
 from typing import List, Optional, Tuple
 
 # Linux 系统常量
@@ -39,6 +41,150 @@ VPNGATE_MIRROR_KEY = "8rhIFzFKRJMFAe-xP5OQPclDEvSjKlHo"
 VPNGATE_OWN_NETS = [
     ipaddress.ip_network("219.100.37.0/24")
 ]
+
+# OpenVPN 配置文件安全白名单指令 (借鉴 OpenMili 生产级安全加固规范)
+# 严格过滤 up, down, script-security, plugin 等高危执行指令，杜绝不可信节点提权或 RCE 漏洞
+SAFE_OVPN_DIRECTIVES = {
+    "auth", "cipher", "client", "comp-lzo", "compress",
+    "connect-retry", "connect-retry-max", "connect-timeout",
+    "data-ciphers", "data-ciphers-fallback", "dev", "dev-type",
+    "explicit-exit-notify", "keepalive",
+    "key-direction", "mute", "nobind", "persist-key", "persist-tun",
+    "ping", "ping-restart", "ping-timer-rem", "proto", "pull",
+    "rcvbuf", "remote", "remote-cert-tls", "remote-random",
+    "remote-random-hostname", "reneg-sec", "resolv-retry",
+    "route-delay", "sndbuf", "tls-cipher", "tls-ciphersuites",
+    "tls-client", "tls-version-min", "verb", "verify-x509-name",
+    "topology", "float", "fast-io", "hand-window", "tran-window",
+    "link-mtu", "tun-mtu", "mssfix", "fragment", "redirect-gateway",
+    "redirect-private", "route-gateway", "route-metric", "route-nopull"
+}
+
+SAFE_OVPN_INLINE_BLOCKS = {"ca", "cert", "key", "tls-auth", "tls-crypt", "extra-certs"}
+
+DANGEROUS_OVPN_DIRECTIVES = {
+    "up", "down", "script-security", "plugin", "route-up", "route-pre-down",
+    "auth-user-pass-verify", "client-connect", "client-disconnect",
+    "tls-verify", "ipchange", "management", "management-user-pass"
+}
+
+
+def sanitize_ovpn_config(raw_ovpn: str) -> str:
+    """
+    OpenVPN 配置文件安全白名单清洗器 (借鉴 OpenMili 安全架构)：
+    严格剔除任何包含命令执行、脚本挂钩 (up/down/script-security/plugin) 的高危指令，
+    仅放行 SAFE_OVPN_DIRECTIVES 与 SAFE_OVPN_INLINE_BLOCKS，
+    从物理层面杜绝恶意 VPNGate 节点在 VPS 上进行任意代码执行 (RCE) 提权！
+    """
+    if not raw_ovpn:
+        return ""
+
+    lines = raw_ovpn.splitlines()
+    sanitized: list[str] = []
+    in_block: Optional[str] = None
+    block_is_safe = False
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        # 检查是否为内联块标签 <tag> 或 </tag>
+        if stripped.startswith("<") and stripped.endswith(">"):
+            tag_content = stripped[1:-1].strip()
+            if tag_content.startswith("/"):
+                # 块结束 </tag>
+                closing_tag = tag_content[1:].strip().lower()
+                if in_block == closing_tag:
+                    if block_is_safe:
+                        sanitized.append(line)
+                    in_block = None
+                    block_is_safe = False
+                continue
+            else:
+                # 块开始 <tag>
+                opening_tag = tag_content.lower()
+                in_block = opening_tag
+                block_is_safe = opening_tag in SAFE_OVPN_INLINE_BLOCKS
+                if block_is_safe:
+                    sanitized.append(line)
+                continue
+
+        # 如果当前在内联块内部
+        if in_block is not None:
+            if block_is_safe:
+                sanitized.append(line)
+            continue
+
+        # 注释与空行跳过
+        if stripped.startswith(("#", ";")):
+            continue
+
+        # 提取指令首词
+        tokens = stripped.split()
+        if not tokens:
+            continue
+        directive = tokens[0].lower()
+
+        # 明确黑名单或非白名单字段，坚决剔除
+        if directive in DANGEROUS_OVPN_DIRECTIVES:
+            continue
+        if directive not in SAFE_OVPN_DIRECTIVES:
+            continue
+
+        # 避免启动冲突指令 (dhcp-option 等在 netns 内无需使用)
+        if directive in ("dhcp-option",):
+            continue
+
+        sanitized.append(line)
+
+    # 规范化追加 Netns 隔离运行必须参数
+    sanitized.append("nobind")
+    sanitized.append("persist-tun")
+    sanitized.append("persist-key")
+    sanitized.append("verb 3")
+
+    return "\n".join(sanitized) + "\n"
+
+
+class ConnRegistry:
+    """
+    下游客户端连接注册中心 (借鉴 Guli-Joy 生产实践)：
+    跟踪某个代理监听实例当前活跃的下游客户端 Socket 连接，支持一次性强制切断。
+    用途：主节点切换/重连成功后，强制切断下游(如 Clash/Sing-box/Xray)连接，
+    使其连接池立即感知 EOF 并重连到新隧道，彻底消除死连接导致的黑洞卡顿。
+    """
+
+    def __init__(self) -> None:
+        self._conns: set[socket.socket] = set()
+        self._lock = threading.Lock()
+
+    def register(self, sock: socket.socket) -> None:
+        with self._lock:
+            self._conns.add(sock)
+
+    def unregister(self, sock: socket.socket) -> None:
+        with self._lock:
+            self._conns.discard(sock)
+
+    def close_all(self) -> int:
+        """主节点切换成功后调用：强制 shutdown 并 close 所有下游 Socket"""
+        with self._lock:
+            conns = list(self._conns)
+            self._conns.clear()
+        closed = 0
+        for s in conns:
+            try:
+                s.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                s.close()
+                closed += 1
+            except OSError:
+                pass
+        return closed
+
 
 
 class VpnGateNode:
@@ -94,9 +240,126 @@ class VpnGateNode:
         except Exception:
             return ""
 
+    def parse_connection_info(self) -> Tuple[str, int]:
+        """从 ovpn 配置中提取传输协议 (tcp/udp) 与端口"""
+        proto = "udp"
+        port = 1194
+        try:
+            cfg = self.decode_ovpn_config()
+            for line in cfg.splitlines():
+                parts = line.strip().split()
+                if not parts:
+                    continue
+                cmd = parts[0].lower()
+                if cmd == "proto" and len(parts) >= 2:
+                    proto = parts[1].lower().replace("-client", "")
+                elif cmd == "remote" and len(parts) >= 3 and parts[2].isdigit():
+                    port = int(parts[2])
+                    if len(parts) >= 4 and parts[3].lower() in ("tcp", "udp"):
+                        proto = parts[3].lower()
+        except Exception:
+            pass
+        return proto, port
+
     def __repr__(self):
         res_str = "🏠家宽" if self.is_residential else "🏢机房"
         return f"<Node [{self.country_short}] {self.ip} ({self.hostname[:16]}) {self.speed_mbps}Mbps {res_str}>"
+
+
+def tcp_prescreen_nodes(nodes: List[VpnGateNode], max_workers: int = 60, timeout: float = 0.8) -> List[VpnGateNode]:
+    """
+    分层测速第一层：非阻塞并发 TCP 握手极速预筛 (借鉴 Guli-Joy 生产优化经验)
+    在启动昂贵的 OpenVPN 进程前，用轻量级 TCP 握手 (0.8s) 瞬间淘汰端口不可达、被墙或关机的死节点。
+    仅对 proto 为 tcp 的节点进行淘汰过滤；UDP 节点由于无连接握手，默认保留。
+    返回存活的节点列表。
+    """
+    if not nodes:
+        return []
+
+    dead_endpoints = set()
+    dead_lock = threading.Lock()
+
+    def probe_worker(node: VpnGateNode):
+        proto, port = node.parse_connection_info()
+        if not proto.startswith("tcp"):
+            return  # UDP 节点不在此层预筛，直接放行
+
+        # 发起非阻塞快速 TCP 探测
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        endpoint = f"{node.ip}:{port}"
+        try:
+            res = s.connect_ex((node.ip, port))
+            if res != 0:
+                with dead_lock:
+                    dead_endpoints.add(endpoint)
+        except Exception:
+            with dead_lock:
+                dead_endpoints.add(endpoint)
+        finally:
+            try:
+                s.close()
+            except Exception:
+                pass
+
+    workers = min(max_workers, max(1, len(nodes)))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        list(executor.map(probe_worker, nodes))
+
+    survived = []
+    for n in nodes:
+        proto, port = n.parse_connection_info()
+        if proto.startswith("tcp") and f"{n.ip}:{port}" in dead_endpoints:
+            continue
+        survived.append(n)
+    return survived
+
+
+BAD_NODE_COOLDOWN_SEC = 1800  # 30 分钟冷却期
+
+
+class NodeCooldownPool:
+    """假活/僵尸节点冷却惩罚池 (借鉴 Guli-Joy 生产防卡死机制)"""
+
+    def __init__(self, cooldown_sec: int = BAD_NODE_COOLDOWN_SEC):
+        self.cooldown_sec = cooldown_sec
+        self._bad_nodes: dict[str, float] = {}  # ip -> expire_timestamp
+        self._lock = threading.Lock()
+
+    def mark_bad(self, ip: str, reason: str = ""):
+        """将假活/异常节点加入冷却池并惩罚 1800 秒"""
+        with self._lock:
+            expire_at = time.time() + self.cooldown_sec
+            self._bad_nodes[ip] = expire_at
+            if reason:
+                sys.stdout.write(f"[!] 节点 {ip} 判定为假活/异常: {reason}，已施加 30 分钟冷却惩罚。\n")
+
+    def is_in_cooldown(self, ip: str) -> bool:
+        """检查节点是否处于冷却期"""
+        with self._lock:
+            now = time.time()
+            if ip in self._bad_nodes:
+                if now < self._bad_nodes[ip]:
+                    return True
+                else:
+                    del self._bad_nodes[ip]
+        return False
+
+    def filter_candidates(self, nodes: List[VpnGateNode]) -> List[VpnGateNode]:
+        """过滤掉所有仍处于冷却期内的假活节点"""
+        with self._lock:
+            now = time.time()
+            # 清理过期项
+            expired = [k for k, exp in self._bad_nodes.items() if now >= exp]
+            for k in expired:
+                del self._bad_nodes[k]
+            active_bad = set(self._bad_nodes.keys())
+
+        return [n for n in nodes if n.ip not in active_bad]
+
+    def count(self) -> int:
+        with self._lock:
+            return len(self._bad_nodes)
 
 
 class VpnGateFetcher:
@@ -210,10 +473,14 @@ class VpnGateFetcher:
 
     @classmethod
     def get_nodes(cls, timeout: int = 15, residential_only: bool = True,
-                  target_country: Optional[str] = None) -> List[VpnGateNode]:
-        """一站式抓取、过滤并排序好的节点池"""
+                  target_country: Optional[str] = None,
+                  prescreen_tcp: bool = True) -> List[VpnGateNode]:
+        """一站式抓取、过滤并排序好的节点池 (集成 TCP 极速分层预筛)"""
         raw = cls.fetch_raw_csv(timeout=timeout)
-        return cls.parse_nodes(raw, residential_only=residential_only, target_country=target_country)
+        nodes = cls.parse_nodes(raw, residential_only=residential_only, target_country=target_country)
+        if prescreen_tcp and os.environ.get("AIMILI_TCP_PRESCREEN", "1") == "1":
+            nodes = tcp_prescreen_nodes(nodes)
+        return nodes
 
 
 class LinuxNetnsManager:
@@ -337,22 +604,12 @@ class NetnsOpenVpnRunner:
         if not ovpn_content:
             return False
 
-        # 调整 ovpn 配置以适配 netns
-        cleaned_lines = []
-        for line in ovpn_content.splitlines():
-            l_str = line.strip()
-            # 避免启动冲突指令
-            if l_str.startswith(("up ", "down ", "dhcp-option")):
-                continue
-            cleaned_lines.append(line)
-        cleaned_lines.append("nobind")
-        cleaned_lines.append("persist-tun")
-        cleaned_lines.append("persist-key")
-        cleaned_lines.append("verb 3")
+        # 应用白名单安全清洗 (剔除远程恶意注入指令) 并适配 Netns 隔离
+        cleaned_ovpn = sanitize_ovpn_config(ovpn_content)
 
         fd, path = tempfile.mkstemp(prefix=f"ovpn_{self.ns_name}_", suffix=".ovpn")
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write("\n".join(cleaned_lines) + "\n")
+            f.write(cleaned_ovpn)
         self.conf_file = path
 
         self.log_file = f"/tmp/ovpn_{self.ns_name}.log"
@@ -493,6 +750,7 @@ class NetnsBridgeServer:
         self.port = port
         self.server_sock: Optional[socket.socket] = None
         self.running = False
+        self.conn_registry = ConnRegistry()
         self._libc = None
         if sys.platform == "linux":
             try:
@@ -532,7 +790,8 @@ class NetnsBridgeServer:
         return s
 
     def _handle_client(self, client: socket.socket):
-        """极简高效 SOCKS5 协议处理"""
+        """极简高效 SOCKS5 协议处理 (集成 ConnRegistry 下游连接追踪)"""
+        self.conn_registry.register(client)
         try:
             client.settimeout(15)
             # 1. 协商认证
@@ -581,6 +840,7 @@ class NetnsBridgeServer:
         except Exception:
             pass
         finally:
+            self.conn_registry.unregister(client)
             try:
                 client.close()
             except Exception:
@@ -630,8 +890,10 @@ class NetnsBridgeServer:
         threading.Thread(target=loop, daemon=True, name="netns-bridge").start()
 
     def stop(self):
-        """停止服务"""
+        """停止服务并强制切断存量下游连接"""
         self.running = False
+        if hasattr(self, "conn_registry") and self.conn_registry:
+            self.conn_registry.close_all()
         if self.server_sock:
             try:
                 self.server_sock.close()
@@ -722,11 +984,13 @@ class AimiliResidentialDaemon:
     统合多源抓取、竞发建连、SOCKS5 代理网桥与出口 IP 巡检自愈
     """
 
-    def __init__(self, bridge_port: int = 8500, target_country: Optional[str] = None):
+    def __init__(self, bridge_port: int = 8500, target_country: Optional[str] = None, ns_prefix: str = "aimili_ns"):
         self.bridge_port = bridge_port
-        self.target_country = target_country
-        self.scheduler = RaceConditionScheduler()
+        self.target_country = target_country.upper() if target_country else None
+        self.ns_prefix = ns_prefix
+        self.scheduler = RaceConditionScheduler(ns_prefix=self.ns_prefix)
         self.bridge_server: Optional[NetnsBridgeServer] = None
+        self.cooldown_pool = NodeCooldownPool()
         self.running = False
         self.current_ip: Optional[str] = None
         self.fail_count = 0
@@ -734,45 +998,78 @@ class AimiliResidentialDaemon:
     def start(self):
         """启动守护总控服务"""
         self.running = True
-        print(f"[*] AimiliVPN 住宅网桥启动中，监听本地端口: 127.0.0.1:{self.bridge_port}")
+        print(f"[*] AimiliVPN 住宅网桥启动中，监听本地端口: 127.0.0.1:{self.bridge_port} [命名空间: {self.ns_prefix}, 目标国家: {self.target_country or '全球最优'}]")
         
         # 首次拉起
         self.rotate_node()
 
         # 启动巡检线程
-        threading.Thread(target=self._health_loop, daemon=True, name="health-check").start()
+        threading.Thread(target=self._health_loop, daemon=True, name=f"health-check-{self.bridge_port}").start()
+
+    def stop(self):
+        """停止服务并释放网络命名空间与 SOCKS5 代理网桥"""
+        self.running = False
+        if self.bridge_server:
+            self.bridge_server.stop()
+            self.bridge_server = None
+        if self.scheduler and self.scheduler.active_runner:
+            self.scheduler.active_runner.stop_tunnel()
+            LinuxNetnsManager.delete_netns(self.scheduler.active_runner.ns_name)
+            self.scheduler.active_runner = None
+
+    def get_status(self) -> dict:
+        """获取当前槽位守护实例运行状态"""
+        runner = self.scheduler.active_runner if self.scheduler else None
+        current_node_str = str(runner.current_node) if (runner and runner.current_node) else None
+        return {
+            "bridge_port": self.bridge_port,
+            "target_country": self.target_country,
+            "ns_prefix": self.ns_prefix,
+            "running": self.running,
+            "current_ip": self.current_ip,
+            "current_node": current_node_str,
+            "fail_count": self.fail_count
+        }
 
     def rotate_node(self) -> bool:
         """执行换线操作"""
-        print("[*] 正在抓取最新住宅节点池并启动竞发建连...")
+        country_label = self.target_country or "全球最优"
+        print(f"[*] 正在抓取最新住宅节点池 [{country_label}] 并启动竞发建连...")
         try:
             candidates = VpnGateFetcher.get_nodes(
                 timeout=12,
                 residential_only=True,
-                target_country=self.target_country
+                target_country=self.target_country,
+                prescreen_tcp=True
             )
+            # 过滤掉处于冷却惩罚期内的假活/异常节点
+            candidates = self.cooldown_pool.filter_candidates(candidates)
             if not candidates:
-                print("[!] 未获取到符合条件的家宽节点！")
+                print(f"[!] 未获取到符合条件的家宽节点 [{country_label}]（可能节点暂时处于冷却惩罚期）！")
                 return False
 
-            print(f"[+] 筛选出 {len(candidates)} 个优质家宽节点，并发拉起竞发测试...")
+            print(f"[+] 筛选出 {len(candidates)} 个优质存活家宽节点 [{country_label}]，并发拉起竞发测试...")
             runner = self.scheduler.provision_fast(candidates, timeout=12)
             if runner:
                 self.current_ip = runner.assigned_ip
-                print(f"[√] 竞发胜出！成功建立住宅隧道: {runner.current_node} -> 出口IP: {self.current_ip}")
+                print(f"[√] 竞发胜出！成功建立住宅隧道 [{country_label}]: {runner.current_node} -> 出口IP: {self.current_ip}")
 
-                # 建立/重启 SOCKS5 网桥
+                # 建立/重启 SOCKS5 网桥 (主动切断旧下游 Socket，促成客户端立即重连新隧道)
                 if self.bridge_server:
+                    if hasattr(self.bridge_server, "conn_registry"):
+                        closed_cnt = self.bridge_server.conn_registry.close_all()
+                        if closed_cnt > 0:
+                            print(f"[*] 节点已切换，主动切断 {closed_cnt} 个存量下游黑洞连接，促成客户端重连新隧道！")
                     self.bridge_server.stop()
                 self.bridge_server = NetnsBridgeServer(runner.ns_name, port=self.bridge_port)
                 self.bridge_server.start()
                 self.fail_count = 0
                 return True
             else:
-                print("[!] 竞发候选建连均未成功，稍后重试。")
+                print(f"[!] 竞发候选建连均未成功 [{country_label}]，稍后重试。")
                 return False
         except Exception as e:
-            print(f"[!] 换线失败: {e}")
+            print(f"[!] 换线失败 [{country_label}]: {e}")
             return False
 
     def _health_loop(self):
@@ -786,12 +1083,170 @@ class AimiliResidentialDaemon:
             alive = self.scheduler.active_runner.is_alive()
             if not alive:
                 self.fail_count += 1
-                print(f"[!] 隧道健康检查未通过 (第 {self.fail_count} 次检测)...")
+                bad_node = self.scheduler.active_runner.current_node
+                print(f"[!] 隧道健康检查未通过 (端口 {self.bridge_port}, 第 {self.fail_count} 次检测)...")
                 if self.fail_count >= 2:
-                    print("[!] 判定当前家宽节点已失效或 IP 漂移，自动触发无感换线自愈！")
+                    if bad_node and bad_node.ip:
+                        self.cooldown_pool.mark_bad(bad_node.ip, "健康检查连续两次失败或出口IP漂移")
+                    print(f"[!] 判定当前家宽节点已失效或 IP 漂移 (端口 {self.bridge_port})，自动触发无感换线自愈！")
                     self.rotate_node()
             else:
                 self.fail_count = 0
+
+
+class ResidentialSlot:
+    """
+    单个 Netns 住宅网桥槽位实例：
+    封装独立网络命名空间、本地 SOCKS5 监听端口、目标过滤国家与守护进程。
+    """
+
+    def __init__(self, slot_id: str, port: int = 8500, target_country: Optional[str] = None, name: Optional[str] = None):
+        self.slot_id = str(slot_id)
+        self.port = int(port)
+        self.target_country = target_country.upper() if target_country else None
+        self.name = name or (f"{self.target_country}住宅" if self.target_country else "全球最优")
+        self.ns_name = f"aimili_ns_{slot_id}"
+        self.daemon: Optional[AimiliResidentialDaemon] = None
+
+    def to_dict(self) -> dict:
+        current_ip = self.daemon.current_ip if (self.daemon and self.daemon.current_ip) else None
+        current_node = str(self.daemon.scheduler.active_runner.current_node) if (self.daemon and self.daemon.scheduler and self.daemon.scheduler.active_runner and self.daemon.scheduler.active_runner.current_node) else None
+        running = self.daemon.running if self.daemon else False
+        return {
+            "slot_id": self.slot_id,
+            "tag": f"resi_{self.slot_id}" if self.slot_id != "0" else "resi_global",
+            "name": self.name,
+            "port": self.port,
+            "target_country": self.target_country,
+            "ns_name": self.ns_name,
+            "current_ip": current_ip,
+            "current_node": current_node,
+            "status": "running" if running else "stopped"
+        }
+
+
+class AimiliMultiSlotManager:
+    """
+    Sing-box 原生多国家住宅出口多槽位矩阵管理器 (Phase 3)：
+    统一调度与编排多个独立的 Netns 家宽隧道槽位：
+      - 槽位 0: SOCKS5 8500 (默认全球最优家宽，向后 100% 兼容)
+      - 槽位 1: SOCKS5 8502 (目标国: US 美国住宅家宽)
+      - 槽位 2: SOCKS5 8503 (目标国: JP 日本住宅家宽)
+    支持槽位状态持久化输出与读取 (slots_state.json)，无缝供给 Sing-box 与订阅生成器。
+    """
+    DEFAULT_STATE_FILE = "/opt/aimilivpn/vpngate_data/slots_state.json"
+
+    def __init__(self, state_file: Optional[str] = None):
+        self.state_file = state_file or self.DEFAULT_STATE_FILE
+        self.slots: dict[str, ResidentialSlot] = {}
+        self.lock = threading.Lock()
+
+    def add_slot(self, slot_id: str, port: int, target_country: Optional[str] = None, name: Optional[str] = None) -> ResidentialSlot:
+        with self.lock:
+            slot = ResidentialSlot(slot_id, port, target_country, name)
+            self.slots[str(slot_id)] = slot
+            return slot
+
+    def remove_slot(self, slot_id: str) -> bool:
+        with self.lock:
+            slot_id = str(slot_id)
+            if slot_id in self.slots:
+                slot = self.slots[slot_id]
+                if slot.daemon and slot.daemon.running:
+                    slot.daemon.stop()
+                del self.slots[slot_id]
+                return True
+            return False
+
+    def configure_default_matrix(self):
+        """配置推荐的多国家住宅矩阵：0: 8500 (全球最优), 1: 8502 (US), 2: 8503 (JP)"""
+        self.add_slot("0", 8500, None, "全球最优")
+        self.add_slot("1", 8502, "US", "美国住宅")
+        self.add_slot("2", 8503, "JP", "日本住宅")
+
+    def start_slot(self, slot_id: str) -> bool:
+        with self.lock:
+            slot_id = str(slot_id)
+            if slot_id not in self.slots:
+                return False
+            slot = self.slots[slot_id]
+            if slot.daemon and slot.daemon.running:
+                return True
+            daemon = AimiliResidentialDaemon(
+                bridge_port=slot.port,
+                target_country=slot.target_country,
+                ns_prefix=slot.ns_name
+            )
+            slot.daemon = daemon
+            daemon.start()
+            return True
+
+    def stop_slot(self, slot_id: str) -> bool:
+        with self.lock:
+            slot_id = str(slot_id)
+            if slot_id in self.slots:
+                slot = self.slots[slot_id]
+                if slot.daemon:
+                    slot.daemon.stop()
+                    slot.daemon = None
+                return True
+            return False
+
+    def start_all(self):
+        for slot_id in list(self.slots.keys()):
+            self.start_slot(slot_id)
+
+    def stop_all(self):
+        for slot_id in list(self.slots.keys()):
+            self.stop_slot(slot_id)
+
+    def get_state(self) -> dict:
+        with self.lock:
+            slot_list = [slot.to_dict() for slot in self.slots.values()]
+            return {
+                "slots": slot_list,
+                "total_slots": len(slot_list),
+                "updated_at": int(time.time())
+            }
+
+    def save_state(self, filepath: Optional[str] = None) -> bool:
+        target_path = filepath or self.state_file
+        try:
+            data = self.get_state()
+            dir_name = os.path.dirname(os.path.abspath(target_path))
+            if dir_name:
+                os.makedirs(dir_name, exist_ok=True)
+            tmp_file = f"{target_path}.tmp.{os.getpid()}"
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            shutil.move(tmp_file, target_path)
+            return True
+        except Exception as e:
+            print(f"[!] 保存槽位状态失败 ({target_path}): {e}")
+            return False
+
+    def load_state(self, filepath: Optional[str] = None) -> bool:
+        target_path = filepath or self.state_file
+        if not os.path.isfile(target_path):
+            return False
+        try:
+            with open(target_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            slots_info = data.get("slots", [])
+            with self.lock:
+                self.slots.clear()
+                for s in slots_info:
+                    slot = ResidentialSlot(
+                        slot_id=s["slot_id"],
+                        port=int(s["port"]),
+                        target_country=s.get("target_country"),
+                        name=s.get("name")
+                    )
+                    self.slots[str(s["slot_id"])] = slot
+            return True
+        except Exception as e:
+            print(f"[!] 加载槽位状态失败 ({target_path}): {e}")
+            return False
 
 
 if __name__ == "__main__":
@@ -805,3 +1260,4 @@ if __name__ == "__main__":
             print(f"  * {n}")
     except Exception as e:
         print(f"获取节点失败: {e}")
+

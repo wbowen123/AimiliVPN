@@ -480,6 +480,74 @@ def generate_subscriptions(nodes_data, output_dir):
                 "tls": True, "servername": cf_cdn_host, "skip-cert-verify": False
             })
 
+    # ==========================================================================
+    # D. 生成多国家住宅出口矩阵节点 (Sing-box 原生多槽位家宽矩阵 Phase 3)
+    # ==========================================================================
+    country_slot_configs = []
+    resi_slots = nodes_data.get("resi_slots") or nodes_data.get("slots")
+    if not resi_slots:
+        slots_json_file = os.path.join(data_dir_path, "slots_state.json")
+        if os.path.isfile(slots_json_file):
+            try:
+                with open(slots_json_file, "r", encoding="utf-8") as sf:
+                    s_data = json.load(sf)
+                    resi_slots = s_data.get("slots", [])
+            except Exception:
+                resi_slots = []
+    if not isinstance(resi_slots, list):
+        resi_slots = []
+
+    for slot in resi_slots:
+        s_id = str(slot.get("slot_id", ""))
+        if s_id in ("", "0"):
+            continue  # 槽位 0 为基础全球最优，已在 A 节处理
+        s_country = (slot.get("target_country") or "").upper()
+        s_name = slot.get("name") or (f"{s_country}住宅" if s_country else f"槽位{s_id}")
+        s_uuid = slot.get("uuid") or nodes_data.get(f"resi_{s_id}_uuid") or nodes_data.get(f"resi_{s_country.lower()}_uuid") or resi_uuid
+        country_slot_configs.append({
+            "slot_id": s_id,
+            "country": s_country,
+            "name": s_name,
+            "uuid": s_uuid
+        })
+
+        tag_vless_c = f"🏠 [住宅-家宽·{s_name}] VLESS-Reality【TCP-Vision·{s_country or '独立'}住宅】"
+        tag_hy2_c = f"🏘️ [住宅-家宽·{s_name}] Hysteria 2【H3-UDP-Brutal·{s_country or '独立'}住宅加速】"
+        tag_tuic_c = f"🏡 [住宅-家宽·{s_name}] TUIC v5【H3-QUIC-0RTT·{s_country or '独立'}住宅流媒体】"
+
+        # D1. VLESS Reality 节点
+        vless_c_link = f"vless://{s_uuid}@{public_ip}:{vless_port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni={camouflage_sni}&fp=chrome&pbk={public_key}&sid={short_id}&type=tcp#{urllib.parse.quote(tag_vless_c)}"
+        links.append(vless_c_link)
+        clash_proxies.append({
+            "name": tag_vless_c, "type": "vless", "server": public_ip, "port": vless_port,
+            "uuid": s_uuid, "network": "tcp", "tls": True, "udp": True, "flow": "xtls-rprx-vision",
+            "servername": camouflage_sni, "reality-opts": {"public-key": public_key, "short-id": short_id},
+            "client-fingerprint": "chrome"
+        })
+
+        # D2. Hysteria 2 节点
+        hy2_c_link = f"hysteria2://{s_uuid}@{public_ip}:{hy2_port}?mport={mport_val}{sni_param}{obfs_param}#{urllib.parse.quote(tag_hy2_c)}"
+        links.append(hy2_c_link)
+        hy2_p_c = {
+            "name": tag_hy2_c, "type": "hysteria2", "server": public_ip, "port": hy2_port,
+            "password": s_uuid, "sni": domain if domain else camouflage_sni, "skip-cert-verify": skip_cert_verify
+        }
+        if hy2_hop_ports:
+            hy2_p_c["ports"] = str(hy2_hop_ports)
+        if hy2_obfs:
+            hy2_p_c["obfs"] = "salamander"
+            hy2_p_c["obfs-password"] = hy2_obfs
+        clash_proxies.append(hy2_p_c)
+
+        # D3. TUIC v5 节点
+        tuic_c_link = f"tuic://{s_uuid}:{short_id}@{public_ip}:{tuic_port}?congestion_control=bbr&alpn=h3&sni={tuic_sni}&allow_insecure={insec_flag}#{urllib.parse.quote(tag_tuic_c)}"
+        links.append(tuic_c_link)
+        clash_proxies.append({
+            "name": tag_tuic_c, "type": "tuic", "server": public_ip, "port": tuic_port,
+            "uuid": s_uuid, "password": short_id, "alpn": ["h3"], "congestion-controller": "bbr",
+            "sni": tuic_sni, "skip-cert-verify": skip_cert_verify
+        })
+
     # --------------------------------------------------------------------------
     # 2. 输出 Base64 订阅文件 (sub.txt) 与 明文列表 (nodes.txt)
     # --------------------------------------------------------------------------
@@ -838,6 +906,40 @@ def generate_subscriptions(nodes_data, output_dir):
                 "transport": {"type": "http", "path": "/vmess", "host": [cf_cdn_host]},
                 "tls": {"enabled": True, "server_name": cf_cdn_host}
             })
+
+    # 追加多国家住宅出口矩阵节点到 Singbox 客户端出站 (Phase 3)
+    for c_cfg in country_slot_configs:
+        c_name = c_cfg["name"]
+        c_country = c_cfg["country"]
+        c_uuid = c_cfg["uuid"]
+        tag_vless_c = f"🏠 [住宅-家宽·{c_name}] VLESS-Reality【TCP-Vision·{c_country or '独立'}住宅】"
+        tag_hy2_c = f"🏘️ [住宅-家宽·{c_name}] Hysteria 2【H3-UDP-Brutal·{c_country or '独立'}住宅加速】"
+        tag_tuic_c = f"🏡 [住宅-家宽·{c_name}] TUIC v5【H3-QUIC-0RTT·{c_country or '独立'}住宅流媒体】"
+
+        sb_outbounds_list.append({
+            "type": "vless", "tag": tag_vless_c, "server": public_ip, "server_port": vless_port,
+            "uuid": c_uuid, "flow": "xtls-rprx-vision", "network": "tcp",
+            "tls": {
+                "enabled": True, "server_name": camouflage_sni, "reality": {"enabled": True, "public_key": public_key, "short_id": short_id},
+                "utls": {"enabled": True, "fingerprint": "chrome"}
+            }
+        })
+
+        hy2_sb_c = {
+            "type": "hysteria2", "tag": tag_hy2_c, "server": public_ip, "server_port": hy2_port,
+            "password": c_uuid, "tls": {"enabled": True, "server_name": domain if domain else camouflage_sni, "insecure": skip_cert_verify}
+        }
+        if hy2_hop_ports and "server_ports" in hy2_sb_d:
+            hy2_sb_c["server_ports"] = hy2_sb_d["server_ports"]
+        if hy2_obfs:
+            hy2_sb_c["obfs"] = {"type": "salamander", "password": hy2_obfs}
+        sb_outbounds_list.append(hy2_sb_c)
+
+        sb_outbounds_list.append({
+            "type": "tuic", "tag": tag_tuic_c, "server": public_ip, "server_port": tuic_port,
+            "uuid": c_uuid, "password": short_id, "congestion_control": "bbr",
+            "tls": {"enabled": True, "server_name": tuic_sni, "alpn": ["h3"], "insecure": skip_cert_verify}
+        })
 
     sb_all_tags = [o["tag"] for o in sb_outbounds_list]
     sb_direct_tags = [t for t in sb_all_tags if "直连" in t]

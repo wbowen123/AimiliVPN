@@ -214,6 +214,8 @@ PRIVATE_KEY=""
 PUBLIC_KEY=""
 DIRECT_UUID=""
 RESI_UUID=""
+RESI_US_UUID=""
+RESI_JP_UUID=""
 SHORT_ID=""
 HY2_OBFS=""
 
@@ -222,6 +224,8 @@ if [ -f "$KEYS_STORE" ]; then
     PUBLIC_KEY=$(python3 -c "import json; print(json.load(open('$KEYS_STORE')).get('public_key',''))" 2>/dev/null || true)
     DIRECT_UUID=$(python3 -c "import json; print(json.load(open('$KEYS_STORE')).get('direct_uuid',''))" 2>/dev/null || true)
     RESI_UUID=$(python3 -c "import json; print(json.load(open('$KEYS_STORE')).get('resi_uuid',''))" 2>/dev/null || true)
+    RESI_US_UUID=$(python3 -c "import json; print(json.load(open('$KEYS_STORE')).get('resi_us_uuid',''))" 2>/dev/null || true)
+    RESI_JP_UUID=$(python3 -c "import json; print(json.load(open('$KEYS_STORE')).get('resi_jp_uuid',''))" 2>/dev/null || true)
     SHORT_ID=$(python3 -c "import json; print(json.load(open('$KEYS_STORE')).get('short_id',''))" 2>/dev/null || true)
     HY2_OBFS=$(python3 -c "import json; print(json.load(open('$KEYS_STORE')).get('hy2_obfs',''))" 2>/dev/null || true)
 fi
@@ -234,6 +238,8 @@ fi
 
 [ -z "$DIRECT_UUID" ] && DIRECT_UUID=$("$SB_BIN" generate uuid)
 [ -z "$RESI_UUID" ] && RESI_UUID=$("$SB_BIN" generate uuid)
+[ -z "$RESI_US_UUID" ] && RESI_US_UUID=$("$SB_BIN" generate uuid 2>/dev/null || python3 -c "import uuid; print(uuid.uuid4())")
+[ -z "$RESI_JP_UUID" ] && RESI_JP_UUID=$("$SB_BIN" generate uuid 2>/dev/null || python3 -c "import uuid; print(uuid.uuid4())")
 [ -z "$SHORT_ID" ] && SHORT_ID=$("$SB_BIN" generate rand --hex 8)
 
 # --------------------------------------------------------------------------
@@ -271,6 +277,8 @@ cat > "$KEYS_STORE" <<EOF
   "public_key": "$PUBLIC_KEY",
   "direct_uuid": "$DIRECT_UUID",
   "resi_uuid": "$RESI_UUID",
+  "resi_us_uuid": "$RESI_US_UUID",
+  "resi_jp_uuid": "$RESI_JP_UUID",
   "short_id": "$SHORT_ID",
   "hy2_obfs": "$HY2_OBFS",
   "sni": "$CAMOUFLAGE_DOMAIN"
@@ -477,15 +485,88 @@ ${HY2_PROTECT_BLOCK}
 }
 EOF
 
-# 8.2 配置清洗与语法校验
+# 8.2 配置清洗与语法校验 (支持动态注入多国家住宅出口矩阵 Phase 3)
 python3 -c "
 import json
+import os
+
 with open('$SB_CONFIG_TMP', 'r') as f:
     cfg = json.load(f)
+
 for ob in cfg.get('outbounds', []):
     if ob.get('type') == 'socks' and not ob.get('username'):
         ob.pop('username', None)
         ob.pop('password', None)
+
+slots_file = os.path.join('$DATA_DIR', 'slots_state.json')
+slots = []
+if os.path.isfile(slots_file):
+    try:
+        with open(slots_file, 'r', encoding='utf-8') as sf:
+            s_data = json.load(sf)
+            slots = s_data.get('slots', [])
+    except Exception:
+        pass
+
+env_slots = os.environ.get('AIMILI_RESIDENTIAL_SLOTS', '')
+if env_slots:
+    for item in env_slots.split(','):
+        parts = item.strip().split(':')
+        if len(parts) >= 2:
+            s_id = parts[0]
+            s_port = int(parts[1])
+            s_country = parts[2] if len(parts) >= 3 else ''
+            if not any(str(s.get('slot_id')) == str(s_id) for s in slots):
+                slots.append({'slot_id': s_id, 'port': s_port, 'target_country': s_country, 'name': f'{s_country}住宅' if s_country else f'槽位{s_id}'})
+
+country_uuids = {
+    'US': '${RESI_US_UUID}',
+    'JP': '${RESI_JP_UUID}'
+}
+
+for slot in slots:
+    s_id = str(slot.get('slot_id'))
+    if s_id in ('', '0'):
+        continue
+    s_port = int(slot.get('port', 8500))
+    s_country = (slot.get('target_country') or '').upper()
+    s_tag = f'resi-{s_country.lower() if s_country else s_id}-out'
+    user_name = f'residential-{s_country.lower() if s_country else s_id}-user'
+    u_uuid = country_uuids.get(s_country, '${RESI_UUID}')
+
+    if not any(o.get('tag') == s_tag for o in cfg.get('outbounds', [])):
+        cfg['outbounds'].append({
+            'type': 'socks',
+            'tag': s_tag,
+            'server': '127.0.0.1',
+            'server_port': s_port,
+            'version': '5'
+        })
+
+    for ib in cfg.get('inbounds', []):
+        users = ib.get('users', [])
+        if any(u.get('name') == user_name for u in users):
+            continue
+        ib_type = ib.get('type')
+        if ib_type == 'vless':
+            users.append({'name': user_name, 'uuid': u_uuid, 'flow': 'xtls-rprx-vision'})
+        elif ib_type == 'hysteria2':
+            users.append({'name': user_name, 'password': u_uuid})
+        elif ib_type == 'tuic':
+            users.append({'name': user_name, 'uuid': u_uuid, 'password': '${SHORT_ID}'})
+        elif ib_type == 'anytls':
+            users.append({'name': user_name, 'password': u_uuid})
+        elif ib_type == 'vmess':
+            users.append({'name': user_name, 'uuid': u_uuid})
+
+    rules = cfg.get('route', {}).get('rules', [])
+    if not any(r.get('outbound') == s_tag for r in rules):
+        insert_idx = len(rules) - 1 if len(rules) > 0 else 0
+        rules.insert(insert_idx, {
+            'auth_user': [user_name],
+            'outbound': s_tag
+        })
+
 with open('$SB_CONFIG_TMP', 'w') as f:
     json.dump(cfg, f, indent=2)
 "
@@ -632,6 +713,8 @@ cat > "$NODES_JSON" <<EOF
   "hy2_hop_ports": "443,40000-50000",
   "direct_uuid": "${DIRECT_UUID}",
   "resi_uuid": "${RESI_UUID}",
+  "resi_us_uuid": "${RESI_US_UUID}",
+  "resi_jp_uuid": "${RESI_JP_UUID}",
   "resi_egress_type": "${RESI_EGRESS_TYPE}",
   "resi_host": "${RESI_PROXY_HOST}",
   "resi_port": ${RESI_PROXY_PORT},
