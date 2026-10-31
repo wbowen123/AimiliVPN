@@ -393,15 +393,94 @@ ml singbox  # Sing-box 核心管理（start/stop/restart/logs/status）
 
 ## English
 
-### 1. System Overview
+### 1. System Overview & Architecture Positioning
 
-**Aimili VPN + Sing-box | Full-Protocol Dual-Stack & Multi-Country Matrix (V1.6.0)**
-* **Current Version**: `V1.6.0` | **Release Timestamp**: `2026-10-30 16:45:00 CST`
+**Aimili VPN + Sing-box | Full-Protocol Dual-Stack & Multi-Country Egress Matrix (V1.6.0)**
+* **Current Version**: `V1.6.0`
+* **Release Timestamp**: `2026-10-30 16:45:00 CST`
+* **Architectural Pillars**: Sing-box 1.14+ Ingress Proxy Matrix × Linux Netns Physical Network Isolation × Multi-Country Dynamic Residential Egress Matrix
 
-This system combines the cutting-edge ingress proxy matrix of **Sing-box** with the dynamic residential egress matrix of **AimiliVPN** (powered by Linux Network Namespace physical isolation across multiple country slots) and an automated multi-format subscription hub:
-- **Ingress Proxy Matrix (Sing-box)**: Delivers 5 major protocols on ports 443 (TCP Reality & UDP Hy2), 8443 (UDP TUIC), 8444 (TCP AnyTLS), and 8445 (TCP VMess). Fully supports **IPv4 & IPv6 dual-stack**, using user-level authentication (`auth_user`) to achieve instantaneous zero-downtime dual-outbound and multi-country routing.
-- **Residential Egress Netns Engine (AimiliVPN V1.6.0)**: Dynamically maintains global and country-dedicated residential relay tunnels isolated in dedicated Linux network namespaces, preventing host default gateway hijacking while providing a local SOCKS5 bridge matrix (`127.0.0.1:8500` for global optimal, `8502` for US, `8503` for Japan).
-- **Unified Subscription & Web Control Hub (Nginx)**: Serves `sub.txt`, `singbox.json`, `clash.yaml`, and `nodes.txt` on port 18443, while hosting an obfuscated HTTPS administration panel on port 8443.
+The system operates seamlessly across four foundational modules:
+- **Front-End Multi-Protocol Ingress Matrix (Sing-box)**: Listens on ports 443 (TCP Reality & UDP Hy2), 8443 (UDP TUIC), 8444 (TCP AnyTLS), and 8445 (TCP VMess-xHTTP). Leverages user authentication (`auth_user`) to achieve millisecond-level dual-outbound and multi-country routing.
+- **Back-End Dynamic Residential Bridge Matrix (AimiliVPN Netns Engine)**: Operates within dedicated, physically isolated Linux Network Namespaces. Manages global optimal and country-dedicated residential node pools, providing secure local SOCKS5 bridge endpoints (Slot 0 `127.0.0.1:8500` Global Optimal, Slot 1 `8502` US Residential, Slot 2 `8503` JP Residential).
+- **Universal Subscription Hub & Web Control Center (Nginx)**: Securely hosts `sub.txt`, `singbox.json`, `clash.yaml`, and `nodes.txt` on port 18443 with randomized anti-probing paths (`sub_<token>/`), while providing an HTTPS management dashboard on port 8443.
+- **Automated Self-Healing & Quality Gate System (Code Gate V2.0 & check_health.sh)**: Provides end-to-end production reliability, spanning AST-level static topology validation to live real-time diagnostic checks across all 10 core service ports.
+
+---
+
+### 1.1 [V1.5.0 Architecture Redesign] Linux Netns Physical Network Isolation & Industrial Dynamic Residential Dispatch
+
+Drawing upon the practical innovations of cutting-edge open-source residential scheduling projects (`byJoey/fanout` and `vioIetMiku/miku-gate`), this architectural overhaul completely resolves the three classic vulnerabilities of traditional residential proxies:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                     Linux VPS Host Machine (Host / eth0)               │
+│                                                                        │
+│  [Sing-box Ingress Matrix] ─── auth_user Auth ──┬─> [Native Gigabit] ──> Internet
+│  (TCP 443 / UDP 443 / 8443 / 8444 / 8445)       │                        │
+│                                                 └─> (vpngate-user Resi) │
+│                                                            │             │
+│  [Nginx HTTPS Dashboard] 8443 ──Reverse Proxy──> [Py 8501] │             │
+│  [Nginx Sub Hub] 18443 (sub / clash / singbox)             ▼             │
+│                                                     127.0.0.1:8500       │
+│                                                (NetnsBridgeServer)       │
+│                                                            │ (veth-pair) │
+│  ══════════════════════════════════════════════════════════╪═════════════╪══════
+│  [Physically Isolated Network Namespace: Linux netns]      ▼             │
+│                                                      10.99.X.2 (vp_1)    │
+│  * Host default gateway remains 100% untouched             │             │
+│  * OpenVPN processes strictly confined within netns        ▼             │
+│  * Virtual NIC: tun0 (0.0.0.0/1 via OpenVPN Gateway) ──> [OpenVPN] ──────┘
+│  * Authentic overseas civilian residential ISP IP (e.g. 219.54.213.227)  │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Core Implementation Milestones:
+1. **Phase 1: Real Residential Heuristics & Multi-Source Failover Pool (`scripts/vpngate_engine.py`)**
+   - **Heuristic Filtering Algorithm (`is_residential`)**: Excludes academic relay nodes prefixed with `public-vpn-` and physically blocks Tsukuba University official hosting subnets via CIDR masking (`219.100.37.0/24`), ensuring 100% pure civilian ISP residential exits.
+   - **Dual-Source & Cloudflare Worker Mirror Failover**: Pulls from the official API by default, and automatically switches to the Cloudflare Worker mirror (`https://p.xy.kg/vpngate`) upon network latency or timeout (>10s), eliminating single-point-of-failure risks.
+2. **Phase 2: Concurrent Racing Handshake & IP Drift Self-Healing (`RaceConditionScheduler`)**
+   - **Concurrent Racing Handshake**: Abandons blocking serial retries. Probes multiple candidate nodes in parallel; the first node to verify exit IP authenticity wins immediately, while redundant tunnels are gracefully released. Connection time is slashed from 30s to **3~5 seconds**.
+   - **IP Flapping Sentinel & Healing Daemon**: A background watchdog probes connection health every 15 seconds. If a node drops or undergoes IP flapping, seamless re-routing is triggered automatically.
+3. **Phase 3: Linux Netns Physical Network Isolation (`LinuxNetnsManager`)**
+   - **Zero Host Route Contamination**: Confines OpenVPN inside dedicated network namespaces with private `veth-pair` subnets (`10.99.<slot>.0/24`). Route injections are completely restricted to the netns.
+   - **Host physical NIC (`eth0`) and default gateway (`default via ...`) remain 100% intact, permanently eliminating VPS SSH dropouts and disconnection panics**.
+   - **Transparent Local Bridging**: The host listens on `127.0.0.1:8500`, bridging transparently to the netns SOCKS5 egress for upstream Sing-box consumption.
+
+---
+
+### 1.2 [V1.6.0 Architectural Leap] Sing-box Native Multi-Country Residential Matrix & Production-Grade Security Engine
+
+Building upon the single-slot physical isolation of V1.5.0, V1.6.0 integrates industry-leading open-source best practices, evolving from a "single dynamic residential exit" into a **"production-grade multi-country residential egress matrix and active resilience engine"**:
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                Linux VPS Host Machine (Host / eth0)                          │
+│                                                                                              │
+│  [Sing-box Ingress Matrix] ─── auth_user Auth ──┬─> [direct-user] ──────────> Native Gigabit  │
+│  (TCP 443 / UDP 443 / 8443 / 8444 / 8445)       ├─> [residential-user] ────> 127.0.0.1:8500 ──┐
+│                                                 ├─> [residential-us-user] ─> 127.0.0.1:8502 ──┼─┐
+│                                                 └─> [residential-jp-user] ─> 127.0.0.1:8503 ──┼─┼─┐
+│                                                                                              │ │ │
+│  ════════════════════════════════════════════════════════════════════════════════════════════╪═╪═╪══
+│  [Physically Isolated Linux Netns Multi-Slot Matrix]                                         │ │ │
+│  ├── Slot 0 [aimili_ns_0] (10.99.0.2) ──> [OpenVPN] ──> 🌐 Global Optimal Dynamic Residential<─┘ │ │
+│  ├── Slot 1 [aimili_ns_1] (10.99.1.2) ──> [OpenVPN] ──> 🇺🇸 US Dedicated Residential (US) <──────┘ │
+│  └── Slot 2 [aimili_ns_2] (10.99.2.2) ──> [OpenVPN] ──> 🇯🇵 JP Dedicated Residential (JP) <────────┘
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Core Three Evolution Phases:
+1. **Phase 1: Production Security Whitelist Sanitization & Active Downstream Disconnection**
+   - **OpenVPN Whitelist Sanitization (`sanitize_ovpn_config`)**: Inspired by `OpenMili/aimili-vpngate`, implements strict directive (`SAFE_OVPN_DIRECTIVES`) and inline block (`SAFE_OVPN_INLINE_BLOCKS`) whitelists. Strips dangerous script hooks (`up/down/script-security/plugin/tls-verify`) to prevent privilege escalation and remote code execution (RCE) from untrusted third-party configs.
+   - **Active Downstream Blackhole Socket Disconnection (`ConnRegistry`)**: Inspired by `Guli-Joy/aimili-vpngate`, tracks active downstream client sockets. Upon node failover or IP drift, the bridge actively invokes `close_all()` on dead sockets, causing client TCP stacks to instantly detect the break and reconnect, eliminating tens of seconds of dead connection hangs.
+2. **Phase 2: Concurrent Non-Blocking TCP Port Prescreening & Cooldown Penalty Pool**
+   - **Non-Blocking Concurrent TCP Port Probing (`tcp_prescreen_nodes`)**: Inspired by `Guli-Joy/aimili-vpngate`, probes candidate target ports with high concurrency and a 0.8s hard timeout. Instantly discards 40%~60% of dead-port nodes, accelerating candidate selection and speed testing by 5~10x.
+   - **1800-Second Cooldown Penalty Pool for Half-Dead Nodes (`NodeCooldownPool`)**: Enforces a 30-minute penalty on zombie nodes that complete OpenVPN handshakes but fail to route traffic or flap immediately, permanently preventing circular failover loops.
+3. **Phase 3: Netns Multi-Slot Bridge Manager & Sing-box Native Multi-Country Matrix**
+   - **Multi-Slot Physically Isolated Dispatcher (`AimiliMultiSlotManager` & `ResidentialSlot`)**: Manages Slot 0 (`127.0.0.1:8500` Global Optimal), Slot 1 (`8502` US Dedicated Residential), and Slot 2 (`8503` JP Dedicated Residential) with dedicated Netns namespaces, subnet allocations, and OpenVPN processes, persisted atomically via `slots_state.json`.
+   - **Sing-box Dynamic Multi-Outbound & User Injection**: `setup_singbox.sh` dynamically injects `resi-us-out`, `resi-jp-out`, and country-dedicated ingress users (`residential-us-user`, `residential-jp-user`) with targeted routing rules.
+   - **Full-Ecosystem Aggregated Subscription Engine**: `generate_subs.py` generates full-platform Base64, Clash Meta, and Sing-box subscriptions with dedicated country selectors (`🇺🇸 美国住宅家宽`, `🇯🇵 日本住宅家宽`), expanding client profiles from 18 to **18~24+ nodes**.
 
 ---
 
@@ -525,47 +604,78 @@ Subscription links available on `https://your-domain-or-ip:18443/`:
 
 All node identifiers follow the strict 4D taxonomy: **`[Egress Property + Protocol + Transport Feature + Network Stack]`**. Standard deployments output 18 core nodes, which seamlessly expand to 24+ nodes when the Multi-Country Dedicated Residential Matrix is active:
 
-- **[Group A: IPv4 Direct & Global Residential]**:
-  1. `🚀 [直连-极速·IPv4] VLESS-Reality【TCP-Vision·原生千兆】`
-  2. `🏠 [住宅-家宽·IPv4] VLESS-Reality【TCP-Vision·Aimili动态家宽】`
-  3. `🌪️ [直连-极速·IPv4] Hysteria 2【H3-UDP-Brutal·暴力抗丢包】`
-  4. `🏘️ [住宅-家宽·IPv4] Hysteria 2【H3-UDP-Brutal·恶劣线路家宽加速】`
-  5. `⚡ [直连-极速·IPv4] TUIC v5【H3-QUIC-0RTT·秒开首选】`
-  6. `🏡 [住宅-家宽·IPv4] TUIC v5【H3-QUIC-0RTT·晚高峰家宽流媒体】`
-  7. `🛡️ [直连-极速·IPv4] AnyTLS【TCP-Padding·动态包长防探测】`
-  8. `🌐 [住宅-家宽·IPv4] AnyTLS【TCP-Padding·特征防探测家宽】`
-  9. `☁️ [直连-极速·IPv4] VMess-xHTTP【H2/H3-分块·分段防审查】`
-  10. `🛋️ [住宅-家宽·IPv4] VMess-xHTTP【H2/H3-分块·动态家宽流】`
-- **[Group B: IPv6 Direct Nodes]**:
-  11. `🚀 [直连-极速·IPv6] VLESS-Reality【TCP-Vision·原生IPv6】`
-  12. `🌪️ [直连-极速·IPv6] Hysteria 2【H3-UDP-Brutal·IPv6暴力加速】`
-  13. `⚡ [直连-极速·IPv6] TUIC v5【H3-QUIC-0RTT·IPv6秒开】`
-  14. `☁️ [直连-极速·IPv6] VMess-xHTTP【H2/H3-分块·原生IPv6】`
-- **[Group C: Cloudflare CDN & Argo Proxied Nodes]**:
-  15. `⛅ [CDN-优选IP·IPv4] VMess-WS-Argo【Anycast优选·Cloudflare全球破墙】`
-  16. `⛅ [CDN-小黄云·IPv4] VMess-xHTTP【Cloudflare-CDN·分块免流破墙】`
-  17. `⛅ [CDN-小黄云·IPv4] VLESS-WS-TLS【Cloudflare-CDN·小黄云破墙】`
-  18. `⛅ [CDN-小黄云·IPv6] VMess-xHTTP【Cloudflare-CDN-IPv6·分块穿透】`
-- **[Group D: Multi-Country Dedicated Residential Matrix (V1.6.0 Upgrade)]**:
-  19. `🏠 [住宅-家宽·美国住宅] VLESS-Reality【TCP-Vision·US住宅】` (Slot 1 US Dedicated Residential, Netns Isolated)
-  20. `🏘️ [住宅-家宽·美国住宅] Hysteria 2【H3-UDP-Brutal·US住宅加速】` (UDP Brutal acceleration, optimized for US AI & streaming)
-  21. `🏡 [住宅-家宽·美国住宅] TUIC v5【H3-QUIC-0RTT·US住宅流媒体】` (0-RTT fast handshake for US streaming)
-  22. `🏠 [住宅-家宽·日本住宅] VLESS-Reality【TCP-Vision·JP住宅】` (Slot 2 JP Dedicated Residential, Netns Isolated)
-  23. `🏘️ [住宅-家宽·日本住宅] Hysteria 2【H3-UDP-Brutal·JP住宅加速】` (Low latency for JP gaming and streaming)
-  24. `🏡 [住宅-家宽·日本住宅] TUIC v5【H3-QUIC-0RTT·JP住宅流媒体】` (0-RTT fast handshake for JP media)
+#### [Group A: IPv4 Native Direct & Global Residential Nodes] (Direct VPS Physical IPv4)
+1. `🚀 [直连-极速·IPv4] VLESS-Reality【TCP-Vision·原生千兆】`
+2. `🏠 [住宅-家宽·IPv4] VLESS-Reality【TCP-Vision·Aimili动态家宽】`
+3. `🌪️ [直连-极速·IPv4] Hysteria 2【H3-UDP-Brutal·暴力抗丢包】`
+4. `🏘️ [住宅-家宽·IPv4] Hysteria 2【H3-UDP-Brutal·恶劣线路家宽加速】`
+5. `⚡ [直连-极速·IPv4] TUIC v5【H3-QUIC-0RTT·秒开首选】`
+6. `🏡 [住宅-家宽·IPv4] TUIC v5【H3-QUIC-0RTT·晚高峰家宽流媒体】`
+7. `🛡️ [直连-极速·IPv4] AnyTLS【TCP-Padding·动态包长防探测】`
+8. `🌐 [住宅-家宽·IPv4] AnyTLS【TCP-Padding·特征防探测家宽】`
+9. `☁️ [直连-极速·IPv4] VMess-xHTTP【H2/H3-分块·分段防审查】`
+10. `🛋️ [住宅-家宽·IPv4] VMess-xHTTP【H2/H3-分块·动态家宽流】`
 
-> 💡 **Client Compatibility & Routing**:
-> 1. **AnyTLS (Nodes 7 & 8)**: Proprietary obfuscation protocol native to Sing-box clients. Automatically omitted from `clash.yaml` until upstream Mihomo implements support;
-> 2. **Multi-Country Policy Groups (Group D)**: Clash Meta (`clash.yaml`) and Sing-box (`singbox.json`) subscriptions automatically include dedicated policy selectors for `🇺🇸 美国住宅家宽` and `🇯🇵 日本住宅家宽` for one-click country routing.
+#### [Group B: IPv6 Native Direct Nodes] (Automatically dispatched when VPS provides IPv6)
+11. `🚀 [直连-极速·IPv6] VLESS-Reality【TCP-Vision·原生IPv6】`
+12. `🌪️ [直连-极速·IPv6] Hysteria 2【H3-UDP-Brutal·IPv6暴力加速】`
+13. `⚡ [直连-极速·IPv6] TUIC v5【H3-QUIC-0RTT·IPv6秒开】`
+14. `☁️ [直连-极速·IPv6] VMess-xHTTP【H2/H3-分块·原生IPv6】`
+
+#### [Group C: Cloudflare CDN & Argo Proxied Rescue Nodes] (Empowered by Anycast Clean IP)
+15. `⛅ [CDN-优选IP·IPv4] VMess-WS-Argo【Anycast优选·Cloudflare全球破墙】` (Connect address uses speed-tested clean IP, SNI is Argo domain)
+16. `⛅ [CDN-小黄云·IPv4] VMess-xHTTP【Cloudflare-CDN·分块免流破墙】` (Routes via Cloudflare Orange Cloud CDN port 443)
+17. `⛅ [CDN-小黄云·IPv4] VLESS-WS-TLS【Cloudflare-CDN·小黄云破墙】` (Classic WebSocket Orange Cloud rescue)
+18. `⛅ [CDN-小黄云·IPv6] VMess-xHTTP【Cloudflare-CDN-IPv6·分块穿透】` (Cloudflare Anycast IPv6 clean IP tunnel)
+
+#### [Group D: Multi-Country Dedicated Residential Matrix Nodes (V1.6.0 Upgrade)] (Netns Physically Isolated, Dispatched on Demand)
+19. `🏠 [住宅-家宽·美国住宅] VLESS-Reality【TCP-Vision·US住宅】` (Slot 1 US Dedicated Residential, Netns Isolated)
+20. `🏘️ [住宅-家宽·美国住宅] Hysteria 2【H3-UDP-Brutal·US住宅加速】` (UDP Brutal acceleration, optimized for overseas low-risk AI & streaming)
+21. `🏡 [住宅-家宽·美国住宅] TUIC v5【H3-QUIC-0RTT·US住宅流媒体】` (0-RTT fast handshake for US residential media)
+22. `🏠 [住宅-家宽·日本住宅] VLESS-Reality【TCP-Vision·JP住宅】` (Slot 2 JP Dedicated Residential, Netns Isolated)
+23. `🏘️ [住宅-家宽·日本住宅] Hysteria 2【H3-UDP-Brutal·JP住宅加速】` (Ultra-low latency for Japan native gaming and streaming)
+24. `🏡 [住宅-家宽·日本住宅] TUIC v5【H3-QUIC-0RTT·JP住宅流媒体】` (0-RTT fast handshake for Japan residential media)
+
+> 💡 **Client Protocol Compatibility & Routing Rules**:
+> 1. **AnyTLS (Nodes 7 & 8)**: Proprietary obfuscation protocol native to Sing-box clients. Automatically included in `sub.txt`, `singbox.json`, and `nodes.txt`; automatically omitted from `clash.yaml` until upstream Mihomo implements support;
+> 2. **Multi-Country Policy Groups (Group D)**: Clash Meta (`clash.yaml`) and Sing-box (`singbox.json`) subscriptions automatically include dedicated policy selectors for **`🇺🇸 美国住宅家宽`** and **`🇯🇵 日本住宅家宽`** for one-click country routing without manual node switching.
 
 ---
 
-### 8. Acknowledgments & Upstream Projects
+### 8. Cloudflare DNS Dual-Stack & Subdomain Setup Guide (`ml dns`)
+
+To completely eliminate the common pitfall where **enabling Cloudflare CDN (Orange Cloud) breaks Reality / Hy2 / TUIC and throttles direct gigabit speeds**, add the following 4 DNS records in Cloudflare when your VPS provides IPv4 & IPv6 dual-stack:
+
+| Group | Record Type | Subdomain | Content | Proxy Status | Dedicated Purpose & Benefit |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Group 1: Direct & Residential Fast Domains** | **A** | `direct` | Your VPS IPv4 | **DNS Only (Gray Cloud / Proxied OFF)** | Dedicated for Reality, Hy2, TUIC, and Residential direct routing at native gigabit line speed |
+| **Group 1: Direct & Residential Fast Domains** | **AAAA** | `direct` | Your VPS IPv6 | **DNS Only (Gray Cloud / Proxied OFF)** | Dedicated for native IPv6 high-speed direct routing |
+| **Group 2: Anti-Censorship & CDN Rescue Domains** | **A** | `cdn` | Your VPS IPv4 | **Proxied (Orange Cloud / Proxied ON)** | Dedicated for VMess-WS, VMess-xHTTP, and Argo Tunnels; 100% emergency rescue if VPS IP is blocked |
+| **Group 2: Anti-Censorship & CDN Rescue Domains** | **AAAA** | `cdn` | Your VPS IPv6 | **Proxied (Orange Cloud / Proxied ON)** | Dedicated for CDN IPv6 Anycast edge penetration |
+
+---
+
+### 9. Production Best Engineering Practices & Architecture Recommendations
+
+| Dimension | Current Implementation | Advanced Operations & Production Recommendations |
+| :--- | :--- | :--- |
+| **1. Dual-Stack DNS Physical Isolation** | Built-in `ml dns` guided setup separating Gray Cloud (Direct) and Orange Cloud (CDN Rescue) | **Strictly enforce 4 separate DNS records**: `direct` points to real IPv4/IPv6 with Orange Cloud OFF; `cdn` points to real IPv4/IPv6 with Orange Cloud ON. Never route all protocols through a single CDN domain. The subscription generator automatically discovers `direct.<domain>` for zero-configuration isolation! |
+| **2. Peak QoS Block Mitigation** | UDP 40000-50000 port hopping + Salamander obfuscation | When local ISPs severely throttle or drop UDP 443 during evening peak hours, client subscriptions automatically include the **`🛡️ 晚高峰抗QoS (TCP优先)`** policy group, prioritizing `VLESS-Reality` (TCP), `AnyTLS`, and `VMess`; Hysteria 2 multi-port hopping can also be enabled. |
+| **3. Memory & Stability Protection** | Dynamic GOMEMLIMIT calculation + Daily 04:00 AM `drop_caches` buffer release | Low-spec VPS instances (512MB/1GB RAM) trigger automated visual warnings during setup and in `ml cron`. **It is strongly recommended to keep the background watchdog enabled** to permanently eliminate OOM freezes caused by long-running cache accumulation. |
+| **4. Automated ACME Certificate Lifecycle** | Built-in 10-year maintenance-free IP certificates + Domain ACME HTTP/DNS-01 auto-renew | If using a custom domain without opening port 80 (or if port 80 is blocked by your cloud provider), configure your Cloudflare API Token during setup or via `ml cert` to enable **DNS-01 API validation**, obtaining and auto-renewing wildcard certificates silently without any public port 80 exposure. |
+
+---
+
+### 10. Acknowledgments & Upstream Projects
 
 AimiliVPN extends our sincere gratitude to the global open-source community and network engineering pioneers. The design and implementation of this project builds upon and integrates the following outstanding open-source projects (listed in no particular order):
 
 | Project / Repository | Organization / Author / Link | Contribution & How AimiliVPN Uses It |
 | :--- | :--- | :--- |
+| **aimili-vpngate (OpenMili)** | [OpenMili/aimili-vpngate](https://github.com/OpenMili/aimili-vpngate) | Original open-source upstream (Stars 2298+). Provided production-grade OpenVPN directive whitelist sanitization standards and anti-RCE privilege escalation defense architecture. |
+| **aimili-vpngate (Guli-Joy)** | [Guli-Joy/aimili-vpngate](https://github.com/Guli-Joy/aimili-vpngate) | Multi-egress tuned fork (Stars 27+). Provided non-blocking concurrent TCP port prescreening, 1800s dead-node cooldown penalty pool, and active downstream socket termination concepts. |
+| **AimiliVPN (hankinsus)** | [hankinsus/AimiliVPN](https://github.com/hankinsus/AimiliVPN) | Commercial evolved branch (Stars 6+). Provided early control plane and web dynamic library foundations; refactored in this project into pure Python and modern Linux Netns isolation. |
+| **AimiliVPN (liuyesblog)** | [liuyesblog/AimiliVPN](https://github.com/liuyesblog/AimiliVPN) | Static mirror and cross-version comparative reference. |
 | **Sing-box** | [SagerNet/sing-box](https://github.com/SagerNet/sing-box) | Core proxy platform underpinning this system. Powers VLESS-Reality, Hysteria 2, TUIC v5, AnyTLS, VMess-xHTTP, user-space WireGuard endpoints, and the rule routing engine. |
 | **Cloudflare cloudflared & WARP** | [cloudflare/cloudflared](https://github.com/cloudflare/cloudflared) | Cloudflare Zero Trust Named Tunnels and global Anycast CDN edge. Powers IPv4 emergency rescue, NAT punching, and WARP adaptive streaming/AI unblocking. |
 | **acme.sh** | [acmesh-official/acme.sh](https://github.com/acmesh-official/acme.sh) | Ultra-lightweight pure Unix shell ACME client. Powers automated HTTP-01 webroot issuance and Cloudflare DNS-01 API wildcard certificates without port 80. |
@@ -574,10 +684,6 @@ AimiliVPN extends our sincere gratitude to the global open-source community and 
 | **SSTP-Client** | [sstp-project/sstp-client](https://gitlab.com/sstp-project/sstp-client) | High-performance open-source SSTP client maintained by Eivind Næss, enabling robust enterprise-grade TLS-based tunneling. |
 | **Clash.Meta (Mihomo)** | [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) | Advanced rule-based proxy core. AimiliVPN generates automated YAML configs with latency urltest and failover groups matching its specification. |
 | **v2ray-agent (8-in-1 / 9-in-1)** | [mack-a/v2ray-agent](https://github.com/mack-a/v2ray-agent) | Pioneering script for multi-protocol coexistence and Nginx SNI reverse proxy architectures in China, providing invaluable early architectural insights. |
-| **aimili-vpngate (OpenMili)** | [OpenMili/aimili-vpngate](https://github.com/OpenMili/aimili-vpngate) | Original open-source upstream (Stars 2298+). Provided production-grade OpenVPN directive whitelist sanitization standards and anti-RCE privilege escalation defense architecture. |
-| **aimili-vpngate (Guli-Joy)** | [Guli-Joy/aimili-vpngate](https://github.com/Guli-Joy/aimili-vpngate) | Multi-egress tuned fork (Stars 27+). Provided non-blocking concurrent TCP port prescreening, 1800s dead-node cooldown penalty pool, and active downstream socket termination concepts. |
-| **AimiliVPN (hankinsus)** | [hankinsus/AimiliVPN](https://github.com/hankinsus/AimiliVPN) | Provided early control plane and web dynamic library foundations; refactored in this project into pure Python and modern Linux Netns isolation. |
-| **AimiliVPN (liuyesblog)** | [liuyesblog/AimiliVPN](https://github.com/liuyesblog/AimiliVPN) | Static mirror and cross-version comparative reference. |
 | **fanout & miku-gate** | [byJoey/fanout](https://github.com/byJoey/fanout) & [vioIetMiku/miku-gate](https://github.com/vioIetMiku/miku-gate) | Inspired our residential IP qualification algorithm (`is_residential`) and multi-source concurrent racing scheduler. |
 | **Linux TCP BBR Practice** | [Teddysun (teddysun.com)](https://teddysun.com) / [Toyo (doubi)](https://github.com/ToyoDAdoubi) | Classical Linux TCP BBR congestion control tuning methodologies inspiring our kernel optimization scripts. |
 | **Hysteria** | [apernet/hysteria](https://github.com/apernet/hysteria) | Groundbreaking UDP-Brutal transport protocol compensating for packet loss under adverse network conditions. |
@@ -585,7 +691,7 @@ AimiliVPN extends our sincere gratitude to the global open-source community and 
 
 ---
 
-### 9. Version History & Changelog
+### 11. Version History & Changelog
 
 > **Version Release Specification**: This project strictly adheres to Semantic Versioning (SemVer). Every major release is recorded in reverse chronological order with its **Version** (SemVer) and explicit **Release Timestamp** (YYYY-MM-DD HH:mm:ss CST).
 
